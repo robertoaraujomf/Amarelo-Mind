@@ -1,34 +1,18 @@
 from PySide6.QtWidgets import QGraphicsRectItem, QGraphicsItem, QGraphicsTextItem
 from PySide6.QtCore import Qt, QRectF, QPointF
-from PySide6.QtGui import QPen, QBrush, QColor, QCursor
+from PySide6.QtGui import QPen, QBrush, QColor
 
 class Handle(QGraphicsRectItem):
-    """Os pequenos quadrados h1-h8 para redimensionar"""
     def __init__(self, parent, position_name):
         super().__init__(-5, -5, 10, 10, parent)
         self.parent_node = parent
         self.pos_name = position_name
         self.setBrush(Qt.white)
-        self.setPen(QPen(Qt.black, 1))
-        
-        # Flags para detecção de movimento
+        self.setPen(QPen(QColor("#2b2b2b"), 1))
         self.setFlag(QGraphicsItem.ItemIsMovable)
-        self.setFlag(QGraphicsItem.ItemSendsGeometryChanges)
-        
-        # Define o cursor apropriado para cada handle
-        self.setCursor(self._get_handle_cursor())
-
-    def _get_handle_cursor(self):
-        cursors = {
-            'h1': Qt.SizeFDiagCursor, 'h3': Qt.SizeBDiagCursor,
-            'h6': Qt.SizeBDiagCursor, 'h8': Qt.SizeFDiagCursor,
-            'h2': Qt.SizeVerCursor, 'h7': Qt.SizeVerCursor,
-            'h4': Qt.SizeHorCursor, 'h5': Qt.SizeHorCursor
-        }
-        return cursors.get(self.pos_name, Qt.ArrowCursor)
+        self.setZValue(10) # Garante que fiquem acima de tudo no nó
 
     def mouseMoveEvent(self, event):
-        # Envia a posição mapeada para o sistema de coordenadas do pai
         new_pos = self.mapToParent(event.pos())
         self.parent_node.resize_logic(self.pos_name, new_pos)
 
@@ -36,27 +20,20 @@ class MindMapNode(QGraphicsRectItem):
     def __init__(self, x, y):
         super().__init__(0, 0, 150, 80)
         self.setPos(x, y)
-        self.min_width = 100
-        self.min_height = 50
-        self.padding = 5 # Margem interna padrão (aprox 0.2mm)
+        self.min_width, self.min_height = 100, 50
         
-        # Elemento de texto interno
+        # Texto interno
         self.text_item = QGraphicsTextItem("", self)
         self.text_item.setTextInteractionFlags(Qt.TextEditorInteraction)
         
         self.setFlags(QGraphicsItem.ItemIsMovable | 
-                      QGraphicsItem.ItemIsSelectable | 
-                      QGraphicsItem.ItemSendsGeometryChanges)
+                     QGraphicsItem.ItemIsSelectable | 
+                     QGraphicsItem.ItemSendsGeometryChanges)
         
-        self.handles = {}
-        self.init_handles()
-        self.set_handles_visible(False) # Visíveis apenas quando selecionado
-
-    def init_handles(self):
-        positions = ['h1', 'h2', 'h3', 'h4', 'h5', 'h6', 'h7', 'h8']
-        for p in positions:
-            self.handles[p] = Handle(self, p)
+        # Inicializa handles h1 (top-left) até h8 (bottom-right)
+        self.handles = {p: Handle(self, p) for p in ['h1','h2','h3','h4','h5','h6','h7','h8']}
         self.update_handle_positions()
+        self.set_handles_visible(False)
 
     def update_handle_positions(self):
         r = self.rect()
@@ -68,51 +45,62 @@ class MindMapNode(QGraphicsRectItem):
         self.handles['h6'].setPos(r.bottomLeft())
         self.handles['h7'].setPos(r.center().x(), r.bottom())
         self.handles['h8'].setPos(r.bottomRight())
+        self.center_text()
 
-    def resize_logic(self, handle_name, new_pos):
+    def center_text(self):
+        """Centraliza o texto dentro do retângulo"""
         r = self.rect()
-        new_rect = QRectF(r)
-        
-        # Verifica se o redimensionamento deve ser proporcional (cantos)
-        is_proportional = handle_name in ['h1', 'h3', 'h6', 'h8']
-        aspect_ratio = r.width() / r.height() if r.height() != 0 else 1
-
-        # Lógica simplificada para o lado inferior direito (h8 e h5, h7)
-        if handle_name == 'h8':
-            w = max(new_pos.x(), self.min_width)
-            h = w / aspect_ratio if is_proportional else max(new_pos.y(), self.min_height)
-            new_rect.setBottomRight(QPointF(w, h))
-        
-        elif handle_name == 'h5': # Redimensionamento livre horizontal
-            new_rect.setRight(max(new_pos.x(), self.min_width))
-            
-        elif handle_name == 'h7': # Redimensionamento livre vertical
-            new_rect.setBottom(max(new_pos.y(), self.min_height))
-
-        # Bloqueio de tamanho mínimo baseado no conteúdo visível (Observação 2)
         text_rect = self.text_item.boundingRect()
-        min_w = max(self.min_width, text_rect.width() + self.padding * 2)
-        min_h = max(self.min_height, text_rect.height() + self.padding * 2)
-        
-        if new_rect.width() < min_w: new_rect.setWidth(min_w)
-        if new_rect.height() < min_h: new_rect.setHeight(min_h)
+        self.text_item.setPos(r.center().x() - text_rect.width()/2, 
+                             r.center().y() - text_rect.height()/2)
 
-        self.setRect(new_rect)
-        self.update_handle_positions()
-        self.update_text_layout()
-
-    def update_text_layout(self):
-        """Justapõe o texto dentro do perímetro do objeto"""
+    def resize_logic(self, name, pos):
         r = self.rect()
-        available_w = r.width() - (self.padding * 2)
-        self.text_item.setTextWidth(available_w)
-        self.text_item.setPos(self.padding, self.padding)
+        p = self.pos()
+        
+        # Redimensionamento (ajusta o Rect e a Pos para manter o nó no lugar)
+        if name == 'h8': # Bottom-Right
+            r.setBottomRight(pos)
+        elif name == 'h1': # Top-Left (Move o nó e encolhe o rect)
+            diff = pos - r.topLeft()
+            r.setTopLeft(pos)
+            self.setPos(p + diff)
+        elif name == 'h5': # Right
+            r.setRight(pos.x())
+        elif name == 'h7': # Bottom
+            r.setBottom(pos.y())
+        elif name == 'h4': # Left
+            diff_x = pos.x() - r.left()
+            r.setLeft(pos.x())
+            self.setX(p.x() + diff_x)
+        elif name == 'h2': # Top
+            diff_y = pos.y() - r.top()
+            r.setTop(pos.y())
+            self.setY(p.y() + diff_y)
+
+        # Aplica se respeitar o tamanho mínimo
+        if r.width() >= self.min_width and r.height() >= self.min_height:
+            # Normaliza o rect para (0,0, W, H) para evitar problemas de coordenadas locais
+            new_rect = QRectF(0, 0, r.width(), r.height())
+            self.setRect(new_rect)
+            self.update_handle_positions()
 
     def set_handles_visible(self, visible):
-        for h in self.handles.values():
-            h.setVisible(visible)
+        for h in self.handles.values(): h.setVisible(visible)
 
     def itemChange(self, change, value):
+        # 1. Mostrar/Esconder Handles ao selecionar
         if change == QGraphicsItem.ItemSelectedChange:
             self.set_handles_visible(bool(value))
+        
+        # 2. Notificar Conexões para atualizar em tempo real
+        if change == QGraphicsItem.ItemPositionHasChanged or change == QGraphicsItem.ItemRotationHasChanged:
+            if self.scene():
+                # Import dinâmico para evitar circular import
+                from core.connection import SmartConnection
+                for item in self.scene().items():
+                    if isinstance(item, SmartConnection):
+                        if item.source == self or item.target == self:
+                            item.update_path()
+                            
         return super().itemChange(change, value)

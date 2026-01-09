@@ -1,85 +1,80 @@
-import sys
-import os
-from PySide6.QtWidgets import (QMainWindow, QApplication, QToolBar, QStatusBar, 
-                             QGraphicsView, QGraphicsScene, QVBoxLayout, QWidget,
-                             QFileDialog, QLineEdit, QLabel, QHBoxLayout)
-from PySide6.QtCore import Qt, QSize, QPointF
-from PySide6.QtGui import QIcon, QAction, QBrush, QColor, QLinearGradient
+import sys, os
+from PySide6.QtWidgets import (QMainWindow, QApplication, QGraphicsView, 
+                             QGraphicsScene, QFileDialog, QToolBar,
+                             QStatusBar, QWidget, QHBoxLayout, QLineEdit, QLabel)
+from PySide6.QtCore import Qt, QRectF
+from PySide6.QtGui import QPainter, QColor, QImage
 
-# Importações internas
+# Importações dos seus módulos internos
 try:
-    from core.persistence import PersistenceManager
-    from items.shapes import MindMapNode
-except ImportError:
-    PersistenceManager = None
+    from items.shapes import StyledNode as MindMapNode
+    from core.connection import SmartConnection
+except ImportError as e:
+    print(f"Atenção: Erro ao importar módulos internos: {e}")
     MindMapNode = None
+    SmartConnection = None
 
 class AmareloMainWindow(QMainWindow):
     def __init__(self):
         super().__init__()
-        self.setWindowTitle("Amarelo Mind - Editor de Mapas Mentais")
-        self.resize(1200, 800)
-        
-        # 1. Configuração da Área de Trabalho (Canvas)
-        self.scene = QGraphicsScene()
-        self.scene.setSceneRect(-5000, -5000, 10000, 10000) 
+        self.setWindowTitle("Amarelo Mind")
+        self.resize(1100, 700)
+
+        # 1. Configuração da Cena e Visão
+        self.scene = QGraphicsScene(-5000, -5000, 10000, 10000)
         self.view = QGraphicsView(self.scene)
-        self.view.setRenderHints(Qt.Antialiasing | Qt.SmoothPixmapTransform)
-        self.view.setBackgroundBrush(QBrush(QColor("#f5f0e9")))
         
-        # Movimentação e arraste (Observação 1)
+        self.view.setRenderHints(
+            QPainter.Antialiasing | 
+            QPainter.SmoothPixmapTransform
+        )
+
+        self.view.setBackgroundBrush(QColor("#f5f0e9"))
         self.view.setDragMode(QGraphicsView.ScrollHandDrag)
-        
         self.setCentralWidget(self.view)
-        
-        # 2. Interface
+
+        # 2. Interface e Conexões
         self.setup_toolbar()
         self.setup_statusbar()
-        self.apply_styles()
-
+        
+        # Conecta o evento de seleção para atualizar a barra de status
         self.scene.selectionChanged.connect(self.on_selection_changed)
 
     def setup_toolbar(self):
-        toolbar = QToolBar("Ferramentas")
-        toolbar.setIconSize(QSize(32, 32))
-        toolbar.setMovable(False)
-        self.addToolBar(Qt.TopToolBarArea, toolbar)
-
-        actions = [
-            ("Novo", "assets/icons/new.png", self.new_file),
-            ("Abrir", "assets/icons/open.png", self.open_file),
-            ("Salvar", "assets/icons/save.png", self.save_file),
-            ("Add Objeto", "assets/icons/add.png", self.add_object),
-        ]
-
-        for text, icon_path, func in actions:
-            icon = QIcon(icon_path) if os.path.exists(icon_path) else QIcon()
-            action = QAction(icon, text, self)
-            action.setToolTip(text)
-            action.triggered.connect(func)
-            toolbar.addAction(action)
+        tb = self.addToolBar("Ferramentas")
+        
+        btn_node = tb.addAction("Add Nó")
+        btn_node.triggered.connect(self.add_node)
+        
+        btn_conn = tb.addAction("Conectar")
+        btn_conn.triggered.connect(self.connect_nodes)
+        
+        btn_media = tb.addAction("Mídia")
+        btn_media.triggered.connect(self.add_media)
+        
+        btn_exp = tb.addAction("Exportar")
+        btn_exp.triggered.connect(self.export_map)
 
     def setup_statusbar(self):
+        """Módulo de Controle Numérico"""
         self.status = QStatusBar()
         self.setStatusBar(self.status)
         self.status.setStyleSheet("background-color: #2b2b2b; color: #f5f0e9; border-top: 1px solid #c3c910;")
 
         self.status_container = QWidget()
         layout = QHBoxLayout(self.status_container)
-        layout.setContentsMargins(5, 0, 5, 0)
+        layout.setContentsMargins(10, 0, 10, 0)
 
-        self.input_x = QLineEdit()
-        self.input_y = QLineEdit()
-        self.input_w = QLineEdit()
-        self.input_h = QLineEdit()
+        # Campos de input para X, Y, Largura e Altura
+        self.input_x = QLineEdit(); self.input_y = QLineEdit()
+        self.input_w = QLineEdit(); self.input_h = QLineEdit()
+        
+        self.inputs = {"X:": self.input_x, "Y:": self.input_y, "L:": self.input_w, "A:": self.input_h}
+        style = "background: #3d3d3d; color: #f2f71d; border: 1px solid #818511; border-radius: 3px;"
 
-        style = "background: #3d3d3d; color: #c3c910; border: 1px solid #818511; border-radius: 3px;"
-        labels = ["X:", "Y:", "L:", "A:"]
-        self.inputs = [self.input_x, self.input_y, self.input_w, self.input_h]
-
-        for label_text, widget in zip(labels, self.inputs):
+        for label_text, widget in self.inputs.items():
             layout.addWidget(QLabel(label_text))
-            widget.setFixedWidth(60)
+            widget.setFixedWidth(50)
             widget.setStyleSheet(style)
             widget.returnPressed.connect(self.update_object_from_status)
             layout.addWidget(widget)
@@ -87,81 +82,65 @@ class AmareloMainWindow(QMainWindow):
         self.status.addPermanentWidget(self.status_container)
 
     def on_selection_changed(self):
+        """Atualiza a barra de status quando um nó é clicado"""
         selected = self.scene.selectedItems()
-        if selected and len(selected) == 1:
+        if len(selected) == 1 and hasattr(selected[0], 'rect'):
             item = selected[0]
             self.input_x.setText(str(int(item.pos().x())))
             self.input_y.setText(str(int(item.pos().y())))
             self.input_w.setText(str(int(item.rect().width())))
             self.input_h.setText(str(int(item.rect().height())))
+        else:
+            for widget in self.inputs.values():
+                widget.clear()
 
     def update_object_from_status(self):
+        """Aplica os valores digitados na barra ao objeto"""
         selected = self.scene.selectedItems()
-        if selected and len(selected) == 1:
+        if len(selected) == 1:
             item = selected[0]
             try:
                 item.setPos(float(self.input_x.text()), float(self.input_y.text()))
                 item.setRect(0, 0, float(self.input_w.text()), float(self.input_h.text()))
+                if hasattr(item, 'update_handle_positions'):
+                    item.update_handle_positions()
             except ValueError:
-                self.status.showMessage("Erro: Valor inválido", 2000)
+                self.status.showMessage("Erro: Use apenas números", 2000)
 
-    def add_object(self):
+    def add_node(self):
         if MindMapNode:
             center = self.view.mapToScene(self.view.viewport().rect().center())
             node = MindMapNode(center.x(), center.y())
             self.scene.addItem(node)
 
-    def keyPressEvent(self, event):
-        # Botão 8: Delete
-        if event.key() == Qt.Key_Delete:
-            for item in self.scene.selectedItems():
-                self.scene.removeItem(item)
-                
-        # Botão 3: Salvar (Ctrl + S)
-        elif event.modifiers() == Qt.ControlModifier and event.key() == Qt.Key_S:
-            self.save_file()
+    def connect_nodes(self):
+        sel = self.scene.selectedItems()
+        if len(sel) == 2 and SmartConnection:
+            conn = SmartConnection(sel[0], sel[1])
+            self.scene.addItem(conn)
 
-        # Botão 10: Agrupar (Enter)
-        elif event.key() == Qt.Key_Return or event.key() == Qt.Key_Enter:
-            self.group_selected_objects()
+    def add_media(self):
+        sel = self.scene.selectedItems()
+        if sel and hasattr(sel[0], 'set_image'):
+            path, _ = QFileDialog.getOpenFileName(self, "Imagem", "", "Images (*.png *.jpg)")
+            if path: 
+                sel[0].set_image(path)
 
-        # Movimentação pelas setas (Se nada estiver selecionado)
-        elif not self.scene.selectedItems():
-            h_bar = self.view.horizontalScrollBar()
-            v_bar = self.view.verticalScrollBar()
-            if event.key() == Qt.Key_Left: h_bar.setValue(h_bar.value() - 40)
-            elif event.key() == Qt.Key_Right: h_bar.setValue(h_bar.value() + 40)
-            elif event.key() == Qt.Key_Up: v_bar.setValue(v_bar.value() - 40)
-            elif event.key() == Qt.Key_Down: v_bar.setValue(v_bar.value() + 40)
-
-    def group_selected_objects(self):
-        # Placeholder para a lógica de agrupamento (Botão 10)
-        self.status.showMessage("Agrupando objetos...", 2000)
-
-    def save_file(self):
-        file_path, _ = QFileDialog.getSaveFileName(self, "Salvar Amarelo Mind", "", "Amarelo Mind Files (*.amind)")
-        if file_path and PersistenceManager:
-            PersistenceManager.save_to_file(file_path, self.scene)
-
-    def open_file(self):
-        file_path, _ = QFileDialog.getOpenFileName(self, "Abrir Amarelo Mind", "", "Amarelo Mind Files (*.amind)")
-        if file_path and PersistenceManager:
-            PersistenceManager.load_from_file(file_path, self.scene)
-
-    def new_file(self):
-        os.startfile(sys.argv[0])
-
-    def apply_styles(self):
-        self.setStyleSheet("""
-            QMainWindow { background-color: #2b2b2b; }
-            QToolBar { background-color: #2b2b2b; border-bottom: 2px solid #c3c910; spacing: 15px; padding: 10px; }
-            QToolButton { background-color: #3d3d3d; border: 1px solid #c3c910; border-radius: 4px; padding: 5px; }
-            QToolButton:hover { background-color: #c3c910; }
-            QLabel { color: #f5f0e9; font-weight: bold; }
-        """)
+    def export_map(self):
+        path, _ = QFileDialog.getSaveFileName(self, "Exportar", "", "PNG (*.png)")
+        if path:
+            rect = self.scene.itemsBoundingRect().adjusted(-50, -50, 50, 50)
+            img = QImage(rect.size().toSize(), QImage.Format_ARGB32)
+            img.fill(Qt.white)
+            
+            painter = QPainter(img)
+            painter.setRenderHint(QPainter.Antialiasing)
+            self.scene.render(painter, QRectF(img.rect()), rect)
+            painter.end()
+            img.save(path)
 
 if __name__ == "__main__":
     app = QApplication(sys.argv)
     window = AmareloMainWindow()
-    window.showMaximized()
+    window.show()
     sys.exit(app.exec())

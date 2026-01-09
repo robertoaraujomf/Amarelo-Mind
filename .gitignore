@@ -1,6 +1,17 @@
+# Ambiente Virtual
 env/
 venv/
+ENV/
+
+# Python temporários
 __pycache__/
-*.pyc
+*.py[cod]
+*$py.class
+
+# IDEs
 .vscode/
 .idea/
+
+# Arquivos de log e sistema
+*.log
+.DS_Store

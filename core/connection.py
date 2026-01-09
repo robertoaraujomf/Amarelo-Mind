@@ -1,6 +1,6 @@
-from PySide6.QtWidgets import QGraphicsPathItem, QGraphicsItem
-from PySide6.QtGui import QPainterPath, QPen, QColor
-from PySide6.QtCore import QPointF, Qt
+from PySide6.QtWidgets import QGraphicsPathItem
+from PySide6.QtGui import QPainterPath, QPen, QColor, QPainter
+from PySide6.QtCore import Qt, QPointF
 
 class SmartConnection(QGraphicsPathItem):
     def __init__(self, source_node, target_node):
@@ -8,64 +8,32 @@ class SmartConnection(QGraphicsPathItem):
         self.source = source_node
         self.target = target_node
         
-        # Estilo da linha (Cor padrão escura, curva suave)
-        self.line_color = QColor("#444444")
-        self.setZValue(-1)  # Garante que a linha fique atrás dos objetos
-        self.setPen(QPen(self.line_color, 2, Qt.SolidLine, Qt.RoundCap, Qt.RoundJoin))
+        # Estilo da linha: Grafite suave
+        self.setPen(QPen(QColor("#444444"), 2, Qt.SolidLine, Qt.RoundCap))
+        self.setZValue(-1) # Fica atrás dos nós
         
         self.update_path()
 
     def update_path(self):
-        """Calcula a trajetória curva desviando de obstáculos."""
+        """Calcula a curva de Bézier entre o centro dos dois nós"""
         path = QPainterPath()
         
-        # Pontos de ancoragem (bordas dos objetos, não o centro exato)
-        start_rect = self.source.sceneBoundingRect()
-        target_rect = self.target.sceneBoundingRect()
+        # Pontos centrais dos nós
+        p1 = self.source.sceneBoundingRect().center()
+        p2 = self.target.sceneBoundingRect().center()
         
-        start = start_rect.center()
-        end = target_rect.center()
-
-        # Definição do desvio de 1cm (aprox. 38 pixels)
-        margin = 38 
-
-        # Ponto de controle inicial para a curva de Bézier
-        # Calculamos um ponto intermediário
-        mid_x = (start.x() + end.x()) / 2
-        mid_y = (start.y() + end.y()) / 2
-        ctrl_point = QPointF(mid_x, mid_y - 100) # Curva para cima por padrão
-
-        # Lógica de Desvio de Obstáculos
-        # Verificamos se há algum objeto no caminho direto
-        scene = self.source.scene()
-        if scene:
-            # Pegamos todos os itens que colidem com a linha teórica
-            path_test = QPainterPath()
-            path_test.moveTo(start)
-            path_test.lineTo(end)
-            obstacles = scene.items(path_test)
-
-            for item in obstacles:
-                # Se o item for um objeto (e não a própria linha ou os nodes conectados)
-                if isinstance(item, QGraphicsItem) and item not in [self.source, self.target, self]:
-                    obs_rect = item.sceneBoundingRect()
-                    
-                    # Se o objeto estiver no caminho, empurramos o ponto de controle
-                    # para manter a distância de 1cm (margin) do perímetro do obstáculo
-                    if obs_rect.contains(ctrl_point):
-                        ctrl_point.setY(obs_rect.top() - margin)
-                    
-                    # Evitar sobreposição lateral
-                    if abs(ctrl_point.x() - obs_rect.center().x()) < margin:
-                        ctrl_point.setX(obs_rect.right() + margin)
-
-        # Construção da Curva de Bézier Quadrática
-        path.moveTo(start)
-        path.quadTo(ctrl_point, end)
+        path.moveTo(p1)
         
+        # Criamos pontos de controle para uma curva suave (S-shape)
+        # O desvio horizontal cria um efeito orgânico de mapa mental
+        dx = p2.x() - p1.x()
+        ctrl1 = QPointF(p1.x() + dx / 2, p1.y())
+        ctrl2 = QPointF(p1.x() + dx / 2, p2.y())
+        
+        path.cubicTo(ctrl1, ctrl2, p2)
         self.setPath(path)
 
-    def change_color(self, new_color_hex):
-        """Método para o Botão 12 (Cor das conexões)"""
-        self.line_color = QColor(new_color_hex)
-        self.setPen(QPen(self.line_color, 2))
+    def paint(self, painter, option, widget):
+        """Garante que a linha seja desenhada com suavização"""
+        painter.setRenderHint(QPainter.Antialiasing)
+        super().paint(painter, option, widget)
