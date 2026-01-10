@@ -1,35 +1,51 @@
 from PySide6.QtWidgets import QGraphicsRectItem, QGraphicsItem
+from PySide6.QtGui import QPen, QColor, QBrush, QPainter
 from PySide6.QtCore import Qt, QRectF
-from PySide6.QtGui import QPen, QColor, QBrush
 
-class MindMapGroup(QGraphicsRectItem):
-    """Moldura de agrupamento com cantos arredondados (Botão 10)"""
-    def __init__(self, items):
+class GroupNode(QGraphicsRectItem):
+    """Objeto que envolve outros nós (Requisito 10)"""
+    def __init__(self, items_to_group):
         super().__init__()
-        self.child_items = items
-        self.setZValue(-2) # Atrás de tudo
+        self.child_items = items_to_group
         
-        # Estilo: Borda amarela pontilhada, fundo levemente escurecido
-        self.setPen(QPen(QColor("#c3c910"), 2, Qt.DashLine))
-        self.setBrush(QBrush(QColor(195, 201, 16, 20))) # Amarelo com transparência
+        # Estética: Retângulo Arredondado, sem preenchimento, borda tracejada
+        self.setPen(QPen(QColor("#f2f71d"), 2, Qt.DashLine))
+        self.setBrush(QColor(242, 247, 29, 20)) # Amarelo bem transparente
         
-        self.setFlags(QGraphicsItem.ItemIsMovable | QGraphicsItem.ItemIsSelectable)
-        self.update_boundary()
+        self.setFlags(
+            QGraphicsItem.ItemIsMovable | 
+            QGraphicsItem.ItemIsSelectable |
+            QGraphicsItem.ItemSendsGeometryChanges
+        )
+        
+        # Define que este grupo deve ser tratado como unidade (Observação 3)
+        self.is_unit = True 
+        
+        self.calculate_bounds()
 
-    def update_boundary(self):
-        """Calcula o retângulo que envolve todos os filhos + margem"""
-        if not self.child_items:
-            return
-            
+    def calculate_bounds(self):
+        """Calcula o retângulo que engloba todos os itens selecionados"""
+        if not self.child_items: return
+        
         rect = self.child_items[0].sceneBoundingRect()
         for item in self.child_items[1:]:
             rect = rect.united(item.sceneBoundingRect())
-            
-        # Adiciona uma margem de 15px ao redor
+        
+        # Adiciona uma margem extra para o retângulo de grupo
         self.setRect(rect.adjusted(-15, -15, 15, 15))
 
     def paint(self, painter, option, widget):
-        # Sobrescreve para desenhar cantos arredondados
+        painter.setRenderHint(QPainter.Antialiasing)
+        r = self.rect()
         painter.setPen(self.pen())
         painter.setBrush(self.brush())
-        painter.drawRoundedRect(self.rect(), 15, 15)
+        # Requisito 10: Arredondado nas pontas
+        painter.drawRoundedRect(r, 15, 15)
+
+    def itemChange(self, change, value):
+        # Quando o grupo move, todos os filhos movem juntos
+        if change == QGraphicsItem.ItemPositionHasChanged:
+            delta = value - self.pos()
+            for item in self.child_items:
+                item.moveBy(delta.x(), delta.y())
+        return super().itemChange(change, value)
