@@ -40,7 +40,8 @@ class InfiniteCanvas(QGraphicsView):
         self.scale(factor, factor)
 
     def mousePressEvent(self, event):
-        if not self.itemAt(event.pos()):
+        # Corrigindo event.pos() para event.position().toPoint()
+        if not self.itemAt(event.position().toPoint()):
             self.setDragMode(QGraphicsView.ScrollHandDrag)
         super().mousePressEvent(event)
 
@@ -98,11 +99,8 @@ class AmareloMainWindow(QMainWindow):
         self.toolbar.addSeparator()
 
         # 6: Adicionar Nó
-        self.obj_combo = QComboBox()
-        self.obj_combo.setFixedWidth(50)
-        self.obj_combo.addItem(self.style().standardIcon(QStyle.StandardPixmap.SP_FileDialogNewFolder), "")
-        self.obj_combo.currentIndexChanged.connect(self.add_node)
-        self.toolbar.addWidget(self.obj_combo)
+        # Botão 06: Inserir Novo Nó
+        self.add_btn(QStyle.StandardPixmap.SP_FileDialogNewFolder, "Inserir Nó (Enter)", self.add_node)
 
         # 7-11: Manipulação
         self.add_btn(QStyle.StandardPixmap.SP_ArrowRight, "Duplicar", self.duplicate_node, "+")
@@ -163,9 +161,20 @@ class AmareloMainWindow(QMainWindow):
 
     def add_node(self):
         if MindMapNode:
-            center = self.view.mapToScene(self.view.viewport().rect().center())
-            node = MindMapNode(center.x() - 75, center.y() - 40)
+            # Pega o centro da visão atual do usuário
+            visible_rect = self.view.viewport().rect()
+            scene_center = self.view.mapToScene(visible_rect.center())
+            
+            # Cria o nó centralizado
+            node = MindMapNode(scene_center.x() - 75, scene_center.y() - 40)
             self.scene.addItem(node)
+            
+            # Opcional: Garante que o nó esteja visível e selecionado
+            self.scene.clearSelection()
+            node.setSelected(True)
+            self.view.ensureVisible(node)
+            
+            print("Nó adicionado com sucesso!") # Debug para você ver no terminal
 
     def duplicate_node(self):
         sel = self.scene.selectedItems()
