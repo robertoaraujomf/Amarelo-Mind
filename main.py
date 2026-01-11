@@ -3,24 +3,22 @@ import os
 from PySide6.QtWidgets import (QMainWindow, QApplication, QGraphicsView, 
                              QGraphicsScene, QFileDialog, QToolBar,
                              QStatusBar, QWidget, QHBoxLayout, QLineEdit, 
-                             QLabel, QFrame, QStyle, QComboBox)
+                             QLabel, QFrame, QStyle, QComboBox, QFontDialog)
 from PySide6.QtCore import Qt, QRectF, QSize, QPointF
-from PySide6.QtGui import QPainter, QColor, QImage, QIcon, QAction, QWheelEvent, QKeyEvent, QUndoStack
+from PySide6.QtGui import QPainter, QColor, QImage, QIcon, QAction, QWheelEvent, QKeyEvent, QUndoStack, QPen, QFont, QPixmap
 
-# Imports das lógicas externas
-from core.icon_manager import IconManager
-from items.connection_label import ConnectionLabel
-from items.group_box import GroupBox
-from core.text_editor import TextEditorManager
-from core.style_manager import StyleManager
-
-# Imports internos de itens e persistência
+# Certifique-se de que estes módulos existam no seu diretório de projeto
 try:
+    from core.icon_manager import IconManager
+    from items.connection_label import ConnectionLabel
+    from items.group_box import GroupBox
+    from core.text_editor import TextEditorManager
+    from core.style_manager import StyleManager
     from items.shapes import StyledNode as MindMapNode
     from core.connection import SmartConnection
     from core.persistence import PersistenceManager
 except ImportError as e:
-    print(f"Erro de importação: {e}")
+    print(f"Erro de importação crítica: {e}")
     MindMapNode = None
     SmartConnection = None
     PersistenceManager = None
@@ -29,29 +27,53 @@ class InfiniteCanvas(QGraphicsView):
     def __init__(self, scene, parent=None):
         super().__init__(scene, parent)
         self.setRenderHints(QPainter.Antialiasing | QPainter.SmoothPixmapTransform | QPainter.TextAntialiasing)
-        self.setBackgroundBrush(QColor("#f5f0e9"))
+        self.setBackgroundBrush(QColor("#e5e0d9")) 
         self.setFrameStyle(QFrame.NoFrame)
-        self.setDragMode(QGraphicsView.RubberBandDrag)
+        self.setDragMode(QGraphicsView.RubberBandDrag) 
         self.setTransformationAnchor(QGraphicsView.AnchorUnderMouse)
-        
+
     def wheelEvent(self, event: QWheelEvent):
         factor = 1.25 if event.angleDelta().y() > 0 else 0.8
         self.scale(factor, factor)
 
     def mousePressEvent(self, event):
-        if not self.itemAt(event.position().toPoint()):
-            self.setDragMode(QGraphicsView.ScrollHandDrag)
+        if self.itemAt(event.position().toPoint()):
+            self.setDragMode(QGraphicsView.NoDrag)
+        else:
+            self.setDragMode(QGraphicsView.RubberBandDrag)
         super().mousePressEvent(event)
 
     def mouseReleaseEvent(self, event):
         self.setDragMode(QGraphicsView.RubberBandDrag)
         super().mouseReleaseEvent(event)
 
+    # SOLUÇÃO DEFINITIVA PARA AS SETAS:
+    # Sobrescrevemos o evento no próprio View para garantir que ele não role a tela
+    def keyPressEvent(self, event: QKeyEvent):
+        sel = self.scene().selectedItems()
+        if sel:
+            step = 15
+            key = event.key()
+            if key == Qt.Key.Key_Up:
+                for item in sel: item.moveBy(0, -step)
+                return # Interrompe aqui para não rolar a tela
+            elif key == Qt.Key.Key_Down:
+                for item in sel: item.moveBy(0, step)
+                return
+            elif key == Qt.Key.Key_Left:
+                for item in sel: item.moveBy(-step, 0)
+                return
+            elif key == Qt.Key.Key_Right:
+                for item in sel: item.moveBy(step, 0)
+                return
+        
+        # Se não houver seleção ou não for seta, repassa para a lógica padrão (incluindo atalhos da Main)
+        super().keyPressEvent(event)
+
 class AmareloMainWindow(QMainWindow):
     def __init__(self):
         super().__init__()
         self.setWindowTitle("Amarelo Mind")
-        self.showMaximized()
         self.undo_stack = QUndoStack(self)
         
         self.setStyleSheet("""
@@ -72,6 +94,43 @@ class AmareloMainWindow(QMainWindow):
         self.setup_toolbar()
         self.setup_statusbar()
         self.scene.selectionChanged.connect(self.on_selection_changed)
+        self.showMaximized()
+
+    def draw_custom_node_icon(self):
+        pixmap = QPixmap(32, 32)
+        pixmap.fill(Qt.GlobalColor.transparent)
+        painter = QPainter(pixmap)
+        painter.setRenderHint(QPainter.Antialiasing)
+        painter.setBrush(QColor("#f2f71d"))
+        painter.setPen(QPen(Qt.GlobalColor.black, 1.5))
+        painter.drawRoundedRect(4, 4, 24, 24, 6, 6)
+        painter.setPen(QPen(QColor("#333333"), 1.5))
+        painter.drawLine(8, 11, 24, 11); painter.drawLine(8, 16, 24, 16); painter.drawLine(8, 21, 24, 21)
+        painter.end()
+        return QIcon(pixmap)
+
+    def draw_venn_icon(self):
+        pixmap = QPixmap(32, 32)
+        pixmap.fill(Qt.GlobalColor.transparent)
+        painter = QPainter(pixmap)
+        painter.setRenderHint(QPainter.Antialiasing)
+        painter.setPen(QPen(Qt.GlobalColor.white, 2))
+        painter.setBrush(QColor(242, 247, 29, 120))
+        painter.drawEllipse(4, 8, 16, 16)
+        painter.drawEllipse(12, 8, 16, 16)
+        painter.end()
+        return QIcon(pixmap)
+
+    def draw_text_icon(self, text):
+        pixmap = QPixmap(32, 32)
+        pixmap.fill(Qt.GlobalColor.transparent)
+        painter = QPainter(pixmap)
+        painter.setPen(Qt.GlobalColor.white)
+        font = QFont("Arial", 16, QFont.Weight.Bold)
+        painter.setFont(font)
+        painter.drawText(pixmap.rect(), Qt.AlignmentFlag.AlignCenter, text)
+        painter.end()
+        return QIcon(pixmap)
 
     def setup_toolbar(self):
         self.toolbar = QToolBar("Menu Principal")
@@ -79,37 +138,29 @@ class AmareloMainWindow(QMainWindow):
         self.toolbar.setMovable(False)
         self.addToolBar(Qt.ToolBarArea.TopToolBarArea, self.toolbar)
 
-        # GRUPO 1: Arquivo e Exportação (1, 2, 3, 11)
         self.add_btn(QStyle.StandardPixmap.SP_FileIcon, "Novo", self.new_project, "Ctrl+N")
         self.add_btn(QStyle.StandardPixmap.SP_DialogOpenButton, "Abrir", self.open_project, "Ctrl+O")
         self.add_btn(QStyle.StandardPixmap.SP_DialogSaveButton, "Salvar", self.save_project, "Ctrl+S")
         self.add_btn(QStyle.StandardPixmap.SP_DialogApplyButton, "Exportar PNG", self.export_project, "Ctrl+E")
         self.toolbar.addSeparator()
 
-        # GRUPO 2: Histórico (4, 5)
         self.add_btn(QStyle.StandardPixmap.SP_ArrowBack, "Desfazer", self.undo, "Ctrl+Z")
         self.add_btn(QStyle.StandardPixmap.SP_ArrowForward, "Refazer", self.redo, "Ctrl+R")
         self.toolbar.addSeparator()
 
-        # GRUPO 3: Estrutura (7, 8, 6, 10, 13, 9)
-        self.add_btn(QStyle.StandardPixmap.SP_FileDialogNewFolder, "Inserir Nó", self.add_node, "Enter") # 7
-        self.add_btn(QStyle.StandardPixmap.SP_ArrowRight, "Duplicar", self.duplicate_node, "+") # 8
-        self.add_btn(QStyle.StandardPixmap.SP_TitleBarNormalButton, "Agrupar", self.group_selected) # 6
-        self.add_btn(QStyle.StandardPixmap.SP_BrowserReload, "Conectar", self.connect_nodes, "L") # 10
-        self.add_btn(QStyle.StandardPixmap.SP_DialogNoButton, "Legenda", self.add_line_label) # 13
-        self.add_btn(QStyle.StandardPixmap.SP_TrashIcon, "Excluir", self.delete_selected, "Delete") # 9
+        self.toolbar.addAction(QAction(self.draw_custom_node_icon(), "Inserir Nó (N)", self, shortcut="N", triggered=self.add_node))
+        self.add_btn(QStyle.StandardPixmap.SP_TitleBarNormalButton, "Duplicar (+)", self.duplicate_node, "+") 
+        self.toolbar.addAction(QAction(self.draw_venn_icon(), "Agrupar/Desagrupar (G)", self, shortcut="G", triggered=self.group_selected))
+        self.add_btn(QStyle.StandardPixmap.SP_BrowserReload, "Conectar (L)", self.connect_nodes, "L")
+        self.add_btn(QStyle.StandardPixmap.SP_FileDialogDetailedView, "Legenda", self.add_line_label) 
+        self.add_btn(QStyle.StandardPixmap.SP_TrashIcon, "Excluir (Del)", self.delete_selected, "Delete")
         self.toolbar.addSeparator()
 
-        # GRUPO 4: Texto (15, 14)
-        self.add_btn(QStyle.StandardPixmap.SP_FileDialogDetailedView, "Fonte e Tamanho", self.choose_font) # 15
-        self.add_btn(QStyle.StandardPixmap.SP_TitleBarMenuButton, "Negrito", self.set_bold, "Ctrl+B") # 14
-        # Adicional: Cor do Texto
-        self.add_btn(QStyle.StandardPixmap.SP_DialogHelpButton, "Cor do Texto", self.change_text_color) 
+        self.toolbar.addAction(QAction(self.draw_text_icon("F"), "Fonte", self, triggered=self.choose_font))
         self.toolbar.addSeparator()
 
-        # GRUPO 5: Estética do Objeto (16, 17)
-        self.add_btn(QStyle.StandardPixmap.SP_DialogResetButton, "Cor do Nó", self.change_node_color) # 16
-        self.add_btn(QStyle.StandardPixmap.SP_MessageBoxQuestion, "Sombra", self.apply_node_shadow) # 17
+        self.add_btn(QStyle.StandardPixmap.SP_DialogResetButton, "Cor do objeto", self.change_node_color)
+        self.add_btn(QStyle.StandardPixmap.SP_TitleBarMaxButton, "Sombra", self.apply_node_shadow)
 
     def add_btn(self, style_pixmap, tooltip, callback, shortcut=None):
         icon = self.style().standardIcon(style_pixmap)
@@ -131,20 +182,20 @@ class AmareloMainWindow(QMainWindow):
             edit.returnPressed.connect(self.apply_status_changes); layout.addWidget(edit)
         self.status.addPermanentWidget(container)
 
-    # Lógicas de Arquivo
     def undo(self): self.undo_stack.undo()
     def redo(self): self.undo_stack.redo()
     def new_project(self): os.startfile(sys.argv[0])
+
     def save_project(self):
         if hasattr(self, 'persistence'):
             path, _ = QFileDialog.getSaveFileName(self, "Salvar Mapa", "", "Amarelo Mind (*.amind)")
             if path: self.persistence.save_to_file(path)
+
     def open_project(self):
         if hasattr(self, 'persistence'):
             path, _ = QFileDialog.getOpenFileName(self, "Abrir Mapa", "", "Amarelo Mind (*.amind)")
             if path: self.persistence.load_from_file(path)
 
-    # Lógicas de Criação
     def add_node(self):
         if MindMapNode:
             visible_rect = self.view.viewport().rect()
@@ -156,10 +207,10 @@ class AmareloMainWindow(QMainWindow):
 
     def duplicate_node(self):
         sel = self.scene.selectedItems()
-        if len(sel) == 1 and isinstance(sel[0], MindMapNode):
-            old = sel[0]
-            new_node = MindMapNode(old.pos().x() + 20, old.pos().y() + 20)
-            self.scene.addItem(new_node)
+        for item in sel:
+            if isinstance(item, MindMapNode):
+                new_node = MindMapNode(item.pos().x() + 30, item.pos().y() + 30)
+                self.scene.addItem(new_node)
 
     def delete_selected(self):
         for item in self.scene.selectedItems(): self.scene.removeItem(item)
@@ -175,15 +226,19 @@ class AmareloMainWindow(QMainWindow):
         sel = self.scene.selectedItems()
         for item in sel:
             if isinstance(item, SmartConnection):
-                label = ConnectionLabel("Relação", item)
+                label = ConnectionLabel("Link", item)
                 item.label = label
                 label.update_position()
 
     def group_selected(self):
-        items = self.scene.selectedItems()
-        if not items: return
-        rect = items[0].sceneBoundingRect()
-        for item in items: rect = rect.united(item.sceneBoundingRect())
+        sel = self.scene.selectedItems()
+        for item in sel:
+            if isinstance(item, GroupBox):
+                self.scene.removeItem(item)
+                return
+        if not sel: return
+        rect = sel[0].sceneBoundingRect()
+        for item in sel: rect = rect.united(item.sceneBoundingRect())
         rect.adjust(-20, -20, 20, 20)
         group = GroupBox(rect)
         self.scene.addItem(group)
@@ -199,22 +254,12 @@ class AmareloMainWindow(QMainWindow):
             painter.end()
             img.save(path)
 
-    # Lógicas de Texto e Estética
-    def set_bold(self):
-        sel = self.scene.selectedItems()
-        if sel and hasattr(sel[0], 'text_item'):
-            is_bold = sel[0].text_item.font().bold()
-            TextEditorManager.format_selection(sel[0].text_item, bold=not is_bold)
-
     def choose_font(self):
         sel = self.scene.selectedItems()
         if sel and hasattr(sel[0], 'text_item'):
-            TextEditorManager.open_font_dialog(self, sel[0].text_item)
-
-    def change_text_color(self):
-        sel = self.scene.selectedItems()
-        if sel and hasattr(sel[0], 'text_item'):
-            TextEditorManager.open_color_dialog(self, sel[0].text_item)
+            font, ok = QFontDialog.getFont(sel[0].text_item.font(), self, "Configurar Texto")
+            if ok:
+                sel[0].text_item.setFont(font)
 
     def change_node_color(self):
         sel = self.scene.selectedItems()
@@ -224,7 +269,6 @@ class AmareloMainWindow(QMainWindow):
         sel = self.scene.selectedItems()
         for item in sel: StyleManager.apply_shadow(item)
 
-    # Eventos e Status
     def on_selection_changed(self):
         sel = self.scene.selectedItems()
         if len(sel) == 1 and hasattr(sel[0], 'rect'):
@@ -242,11 +286,6 @@ class AmareloMainWindow(QMainWindow):
                 item.setPos(float(self.in_x.text()), float(self.in_y.text()))
                 item.setRect(0, 0, float(self.in_w.text()), float(self.in_h.text()))
             except: pass
-
-    def keyPressEvent(self, event: QKeyEvent):
-        if event.key() == Qt.Key.Key_Delete: self.delete_selected()
-        elif event.key() == Qt.Key.Key_Return or event.key() == Qt.Key.Key_Enter: self.add_node()
-        super().keyPressEvent(event)
 
 if __name__ == "__main__":
     app = QApplication(sys.argv)
