@@ -237,10 +237,39 @@ class AmareloMainWindow(QMainWindow):
 
     def choose_font(self):
         sel = self.scene.selectedItems()
-        if sel and hasattr(sel[0], 'text_item'):
-            # Requisito 5: Diálogo de Fonte
-            font, ok = QFontDialog.getFont(sel[0].text_item.font(), self, "Configurar Texto")
-            if ok: sel[0].text_item.setFont(font)
+        if not sel: return
+        
+        # Pegamos o estilo atual do primeiro item para carregar o diálogo com as configs atuais
+        current_font = QFont()
+        current_color = QColor(Qt.GlobalColor.black)
+        
+        if hasattr(sel[0], 'text_item'):
+            current_font = sel[0].text_item.font()
+            current_color = sel[0].text_item.defaultTextColor()
+
+        # 1. Abre o Diálogo de Fonte (Já inclui: Família, Negrito, Itálico, Sublinhado e Riscado)
+        font, ok = QFontDialog.getFont(current_font, self, "Configurar Texto")
+        
+        if ok:
+            # 2. Abre o Diálogo de Cor (Para fechar o requisito do Item 5)
+            color = QColorDialog.getColor(current_color, self, "Cor do Texto")
+            
+            # Aplicamos a todos os itens selecionados (Suporte a multi-seleção)
+            for item in sel:
+                # Se for um Nó (StyledNode)
+                if hasattr(item, 'text_item'):
+                    item.text_item.setFont(font)
+                    if color.isValid():
+                        item.text_item.setDefaultTextColor(color)
+                    # Força o ajuste do tamanho do nó caso o texto tenha crescido
+                    if hasattr(item, 'center_text'):
+                        item.center_text()
+                
+                # Se for uma Legenda de Conexão (ConnectionLabel)
+                elif isinstance(item, ConnectionLabel):
+                    item.setFont(font)
+                    if color.isValid():
+                        item.setDefaultTextColor(color)
 
     def change_node_color(self):
         sel = self.scene.selectedItems()
