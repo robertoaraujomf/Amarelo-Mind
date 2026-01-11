@@ -3,7 +3,7 @@ import os
 from PySide6.QtWidgets import (QMainWindow, QApplication, QGraphicsView, 
                              QGraphicsScene, QFileDialog, QToolBar,
                              QStatusBar, QWidget, QHBoxLayout, QLineEdit, 
-                             QLabel, QFrame, QStyle, QComboBox, QFontDialog)
+                             QLabel, QFrame, QStyle, QComboBox, QFontDialog, QColorDialog)
 from PySide6.QtCore import Qt, QRectF, QSize, QPointF
 from PySide6.QtGui import QPainter, QColor, QImage, QIcon, QAction, QWheelEvent, QKeyEvent, QUndoStack, QPen, QFont, QPixmap
 
@@ -47,8 +47,6 @@ class InfiniteCanvas(QGraphicsView):
         self.setDragMode(QGraphicsView.RubberBandDrag)
         super().mouseReleaseEvent(event)
 
-    # SOLUÇÃO DEFINITIVA PARA AS SETAS:
-    # Sobrescrevemos o evento no próprio View para garantir que ele não role a tela
     def keyPressEvent(self, event: QKeyEvent):
         sel = self.scene().selectedItems()
         if sel:
@@ -56,7 +54,7 @@ class InfiniteCanvas(QGraphicsView):
             key = event.key()
             if key == Qt.Key.Key_Up:
                 for item in sel: item.moveBy(0, -step)
-                return # Interrompe aqui para não rolar a tela
+                return 
             elif key == Qt.Key.Key_Down:
                 for item in sel: item.moveBy(0, step)
                 return
@@ -66,8 +64,6 @@ class InfiniteCanvas(QGraphicsView):
             elif key == Qt.Key.Key_Right:
                 for item in sel: item.moveBy(step, 0)
                 return
-        
-        # Se não houver seleção ou não for seta, repassa para a lógica padrão (incluindo atalhos da Main)
         super().keyPressEvent(event)
 
 class AmareloMainWindow(QMainWindow):
@@ -96,58 +92,56 @@ class AmareloMainWindow(QMainWindow):
         self.scene.selectionChanged.connect(self.on_selection_changed)
         self.showMaximized()
 
+    # --- ÍCONES ---
     def draw_custom_node_icon(self):
-        pixmap = QPixmap(32, 32)
-        pixmap.fill(Qt.GlobalColor.transparent)
-        painter = QPainter(pixmap)
-        painter.setRenderHint(QPainter.Antialiasing)
-        painter.setBrush(QColor("#f2f71d"))
-        painter.setPen(QPen(Qt.GlobalColor.black, 1.5))
+        pixmap = QPixmap(32, 32); pixmap.fill(Qt.GlobalColor.transparent)
+        painter = QPainter(pixmap); painter.setRenderHint(QPainter.Antialiasing)
+        painter.setBrush(QColor("#f2f71d")); painter.setPen(QPen(Qt.GlobalColor.black, 1.5))
         painter.drawRoundedRect(4, 4, 24, 24, 6, 6)
-        painter.setPen(QPen(QColor("#333333"), 1.5))
-        painter.drawLine(8, 11, 24, 11); painter.drawLine(8, 16, 24, 16); painter.drawLine(8, 21, 24, 21)
-        painter.end()
-        return QIcon(pixmap)
+        painter.end(); return QIcon(pixmap)
 
     def draw_venn_icon(self):
-        pixmap = QPixmap(32, 32)
-        pixmap.fill(Qt.GlobalColor.transparent)
-        painter = QPainter(pixmap)
-        painter.setRenderHint(QPainter.Antialiasing)
+        pixmap = QPixmap(32, 32); pixmap.fill(Qt.GlobalColor.transparent)
+        painter = QPainter(pixmap); painter.setRenderHint(QPainter.Antialiasing)
         painter.setPen(QPen(Qt.GlobalColor.white, 2))
-        painter.setBrush(QColor(242, 247, 29, 120))
-        painter.drawEllipse(4, 8, 16, 16)
-        painter.drawEllipse(12, 8, 16, 16)
-        painter.end()
-        return QIcon(pixmap)
+        painter.setBrush(QColor(242, 247, 29, 150))
+        painter.drawEllipse(4, 8, 16, 16); painter.drawEllipse(12, 8, 16, 16)
+        painter.end(); return QIcon(pixmap)
+
+    def draw_shadow_icon(self):
+        pixmap = QPixmap(32, 32); pixmap.fill(Qt.GlobalColor.transparent)
+        painter = QPainter(pixmap); painter.setRenderHint(QPainter.Antialiasing)
+        painter.setBrush(QColor(50, 50, 50, 150)); painter.setPen(Qt.GlobalColor.transparent)
+        painter.drawEllipse(6, 22, 20, 6)
+        painter.setBrush(QColor("#f2f71d")); painter.setPen(QPen(Qt.GlobalColor.black, 1))
+        painter.drawEllipse(8, 4, 16, 16)
+        painter.end(); return QIcon(pixmap)
 
     def draw_text_icon(self, text):
-        pixmap = QPixmap(32, 32)
-        pixmap.fill(Qt.GlobalColor.transparent)
-        painter = QPainter(pixmap)
-        painter.setPen(Qt.GlobalColor.white)
-        font = QFont("Arial", 16, QFont.Weight.Bold)
-        painter.setFont(font)
+        pixmap = QPixmap(32, 32); pixmap.fill(Qt.GlobalColor.transparent)
+        painter = QPainter(pixmap); painter.setPen(Qt.GlobalColor.white)
+        painter.setFont(QFont("Arial", 16, QFont.Weight.Bold))
         painter.drawText(pixmap.rect(), Qt.AlignmentFlag.AlignCenter, text)
-        painter.end()
-        return QIcon(pixmap)
+        painter.end(); return QIcon(pixmap)
 
     def setup_toolbar(self):
         self.toolbar = QToolBar("Menu Principal")
-        self.toolbar.setIconSize(QSize(24, 24))
-        self.toolbar.setMovable(False)
+        self.toolbar.setIconSize(QSize(24, 24)); self.toolbar.setMovable(False)
         self.addToolBar(Qt.ToolBarArea.TopToolBarArea, self.toolbar)
 
+        # Arquivo
         self.add_btn(QStyle.StandardPixmap.SP_FileIcon, "Novo", self.new_project, "Ctrl+N")
         self.add_btn(QStyle.StandardPixmap.SP_DialogOpenButton, "Abrir", self.open_project, "Ctrl+O")
         self.add_btn(QStyle.StandardPixmap.SP_DialogSaveButton, "Salvar", self.save_project, "Ctrl+S")
         self.add_btn(QStyle.StandardPixmap.SP_DialogApplyButton, "Exportar PNG", self.export_project, "Ctrl+E")
         self.toolbar.addSeparator()
 
+        # Histórico
         self.add_btn(QStyle.StandardPixmap.SP_ArrowBack, "Desfazer", self.undo, "Ctrl+Z")
         self.add_btn(QStyle.StandardPixmap.SP_ArrowForward, "Refazer", self.redo, "Ctrl+R")
         self.toolbar.addSeparator()
 
+        # Estrutura
         self.toolbar.addAction(QAction(self.draw_custom_node_icon(), "Inserir Nó (N)", self, shortcut="N", triggered=self.add_node))
         self.add_btn(QStyle.StandardPixmap.SP_TitleBarNormalButton, "Duplicar (+)", self.duplicate_node, "+") 
         self.toolbar.addAction(QAction(self.draw_venn_icon(), "Agrupar/Desagrupar (G)", self, shortcut="G", triggered=self.group_selected))
@@ -156,25 +150,24 @@ class AmareloMainWindow(QMainWindow):
         self.add_btn(QStyle.StandardPixmap.SP_TrashIcon, "Excluir (Del)", self.delete_selected, "Delete")
         self.toolbar.addSeparator()
 
+        # Texto
         self.toolbar.addAction(QAction(self.draw_text_icon("F"), "Fonte", self, triggered=self.choose_font))
         self.toolbar.addSeparator()
 
+        # Estética
         self.add_btn(QStyle.StandardPixmap.SP_DialogResetButton, "Cor do objeto", self.change_node_color)
-        self.add_btn(QStyle.StandardPixmap.SP_TitleBarMaxButton, "Sombra", self.apply_node_shadow)
+        self.toolbar.addAction(QAction(self.draw_shadow_icon(), "Sombra", self, triggered=self.apply_node_shadow))
 
     def add_btn(self, style_pixmap, tooltip, callback, shortcut=None):
         icon = self.style().standardIcon(style_pixmap)
         action = QAction(icon, "", self)
-        action.setToolTip(tooltip)
+        action.setToolTip(tooltip); action.triggered.connect(callback)
         if shortcut: action.setShortcut(shortcut)
-        action.triggered.connect(callback)
         self.toolbar.addAction(action)
 
     def setup_statusbar(self):
-        self.status = QStatusBar()
-        self.setStatusBar(self.status)
-        container = QWidget()
-        layout = QHBoxLayout(container)
+        self.status = QStatusBar(); self.setStatusBar(self.status)
+        container = QWidget(); layout = QHBoxLayout(container)
         self.in_x = QLineEdit(); self.in_y = QLineEdit()
         self.in_w = QLineEdit(); self.in_h = QLineEdit()
         for label, edit in zip(["X:", "Y:", "W:", "H:"], [self.in_x, self.in_y, self.in_w, self.in_h]):
@@ -182,6 +175,7 @@ class AmareloMainWindow(QMainWindow):
             edit.returnPressed.connect(self.apply_status_changes); layout.addWidget(edit)
         self.status.addPermanentWidget(container)
 
+    # --- LÓGICAS ---
     def undo(self): self.undo_stack.undo()
     def redo(self): self.undo_stack.redo()
     def new_project(self): os.startfile(sys.argv[0])
@@ -201,13 +195,10 @@ class AmareloMainWindow(QMainWindow):
             visible_rect = self.view.viewport().rect()
             scene_center = self.view.mapToScene(visible_rect.center())
             node = MindMapNode(scene_center.x() - 75, scene_center.y() - 40)
-            self.scene.addItem(node)
-            self.scene.clearSelection()
-            node.setSelected(True)
+            self.scene.addItem(node); self.scene.clearSelection(); node.setSelected(True)
 
     def duplicate_node(self):
-        sel = self.scene.selectedItems()
-        for item in sel:
+        for item in self.scene.selectedItems():
             if isinstance(item, MindMapNode):
                 new_node = MindMapNode(item.pos().x() + 30, item.pos().y() + 30)
                 self.scene.addItem(new_node)
@@ -219,76 +210,67 @@ class AmareloMainWindow(QMainWindow):
         sel = self.scene.selectedItems()
         if len(sel) >= 2:
             for i in range(len(sel)-1):
-                conn = SmartConnection(sel[i], sel[i+1])
-                self.scene.addItem(conn)
+                conn = SmartConnection(sel[i], sel[i+1]); self.scene.addItem(conn)
 
     def add_line_label(self):
-        sel = self.scene.selectedItems()
-        for item in sel:
+        for item in self.scene.selectedItems():
             if isinstance(item, SmartConnection):
-                label = ConnectionLabel("Link", item)
-                item.label = label
-                label.update_position()
+                label = ConnectionLabel("Link", item); item.label = label; label.update_position()
 
     def group_selected(self):
         sel = self.scene.selectedItems()
         for item in sel:
             if isinstance(item, GroupBox):
-                self.scene.removeItem(item)
-                return
+                self.scene.removeItem(item); return
         if not sel: return
         rect = sel[0].sceneBoundingRect()
         for item in sel: rect = rect.united(item.sceneBoundingRect())
-        rect.adjust(-20, -20, 20, 20)
-        group = GroupBox(rect)
-        self.scene.addItem(group)
+        rect.adjust(-20, -20, 20, 20); group = GroupBox(rect); self.scene.addItem(group)
 
     def export_project(self):
         path, _ = QFileDialog.getSaveFileName(self, "Exportar", "", "PNG (*.png)")
         if path:
             rect = self.scene.itemsBoundingRect().adjusted(-50, -50, 50, 50)
-            img = QImage(rect.size().toSize(), QImage.Format_ARGB32)
-            img.fill(Qt.GlobalColor.white)
-            painter = QPainter(img)
-            self.scene.render(painter, QRectF(img.rect()), rect)
-            painter.end()
-            img.save(path)
+            img = QImage(rect.size().toSize(), QImage.Format_ARGB32); img.fill(Qt.GlobalColor.white)
+            painter = QPainter(img); self.scene.render(painter, QRectF(img.rect()), rect)
+            painter.end(); img.save(path)
 
     def choose_font(self):
         sel = self.scene.selectedItems()
         if sel and hasattr(sel[0], 'text_item'):
+            # Requisito 5: Diálogo de Fonte
             font, ok = QFontDialog.getFont(sel[0].text_item.font(), self, "Configurar Texto")
-            if ok:
-                sel[0].text_item.setFont(font)
+            if ok: sel[0].text_item.setFont(font)
 
     def change_node_color(self):
         sel = self.scene.selectedItems()
-        if sel: StyleManager.change_background_color(self, sel[0])
+        if not sel: return
+        color = QColorDialog.getColor(Qt.GlobalColor.yellow, self, "Cor do Objeto")
+        if color.isValid():
+            for item in sel:
+                if hasattr(item, 'set_custom_color'):
+                    item.set_custom_color(color)
 
     def apply_node_shadow(self):
-        sel = self.scene.selectedItems()
-        for item in sel: StyleManager.apply_shadow(item)
+        """ITEM 12: Liga e desliga a sombra corretamente"""
+        for item in self.scene.selectedItems():
+            if hasattr(item, 'toggle_shadow'):
+                item.toggle_shadow()
 
     def on_selection_changed(self):
         sel = self.scene.selectedItems()
         if len(sel) == 1 and hasattr(sel[0], 'rect'):
             item = sel[0]
-            self.in_x.setText(str(int(item.pos().x())))
-            self.in_y.setText(str(int(item.pos().y())))
-            self.in_w.setText(str(int(item.rect().width())))
-            self.in_h.setText(str(int(item.rect().height())))
+            self.in_x.setText(str(int(item.pos().x()))); self.in_y.setText(str(int(item.pos().y())))
+            self.in_w.setText(str(int(item.rect().width()))); self.in_h.setText(str(int(item.rect().height())))
 
     def apply_status_changes(self):
         sel = self.scene.selectedItems()
         if len(sel) == 1:
             try:
-                item = sel[0]
-                item.setPos(float(self.in_x.text()), float(self.in_y.text()))
+                item = sel[0]; item.setPos(float(self.in_x.text()), float(self.in_y.text()))
                 item.setRect(0, 0, float(self.in_w.text()), float(self.in_h.text()))
             except: pass
 
 if __name__ == "__main__":
-    app = QApplication(sys.argv)
-    window = AmareloMainWindow()
-    window.show()
-    sys.exit(app.exec())
+    app = QApplication(sys.argv); window = AmareloMainWindow(); window.show(); sys.exit(app.exec())
