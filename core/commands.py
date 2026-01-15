@@ -23,21 +23,18 @@ class AddNodeCommand(QUndoCommand):
         self.node = node
 
     def undo(self):
+        # Remove o objeto da cena (Desfazer)
         self.scene.removeItem(self.node)
 
     def redo(self):
+        # Adiciona o objeto à cena (Redo / Execução inicial)
         self.scene.addItem(self.node)
-
-    from PySide6.QtGui import QUndoCommand
-
-class AddNodeCommand(QUndoCommand):
-    def __init__(self, scene, node):
-        super().__init__("Adicionar Objeto")
-        self.scene = scene
-        self.node = node
-
-    def redo(self):
-        self.scene.addItem(self.node)
-
-    def undo(self):
-        self.scene.removeItem(self.node)
+        
+        # --- REQUISITOS DE INTERAÇÃO ---
+        # 1. Garante que o novo objeto seja o único selecionado
+        self.scene.clearSelection()
+        self.node.setSelected(True)
+        
+        # 2. Habilita o foco de texto imediatamente
+        # Isso permite que o usuário comece a digitar sem clicar
+        self.node.text_item.setFocus()
