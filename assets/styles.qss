@@ -1,0 +1,50 @@
+QMainWindow {
+    background: #f5f5f5;
+}
+
+QToolBar {
+    background: qlineargradient(
+        x1:0, y1:0, x2:0, y2:1,
+        stop:0 #4a4a4a,
+        stop:1 #2a2a2a
+    );
+    border-bottom: 2px solid #1a1a1a;
+    spacing: 6px;
+    padding: 6px;
+}
+
+QToolButton {
+    background: qlineargradient(
+        x1:0, y1:0, x2:0, y2:1,
+        stop:0 #5a5a5a,
+        stop:1 #3a3a3a
+    );
+    border-radius: 6px;
+    min-width: 40px;
+    min-height: 40px;
+}
+
+QToolButton:hover {
+    background: qlineargradient(
+        x1:0, y1:0, x2:0, y2:1,
+        stop:0 #6a6a6a,
+        stop:1 #4a4a4a
+    );
+}
+
+QToolButton:pressed {
+    background: #2a2a2a;
+}
+
+QToolButton:disabled {
+    background: #1e1e1e;
+    opacity: 0.4;
+}
+
+QToolButton:checked {
+    background: qlineargradient(
+        x1:0, y1:0, x2:0, y2:1,
+        stop:0 #f7e37a,
+        stop:1 #f0c000
+    );
+}
