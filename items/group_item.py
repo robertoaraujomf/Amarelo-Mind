@@ -31,8 +31,10 @@ class GroupNode(QGraphicsRectItem):
         for item in self.child_items[1:]:
             rect = rect.united(item.sceneBoundingRect())
         
+        # Define posição e tamanho do grupo
+        self.setPos(rect.topLeft())
         # Adiciona uma margem extra para o retângulo de grupo
-        self.setRect(rect.adjusted(-15, -15, 15, 15))
+        self.setRect(0, 0, rect.width() + 30, rect.height() + 30)
 
     def paint(self, painter, option, widget):
         painter.setRenderHint(QPainter.Antialiasing)
@@ -44,8 +46,15 @@ class GroupNode(QGraphicsRectItem):
 
     def itemChange(self, change, value):
         # Quando o grupo move, todos os filhos movem juntos
-        if change == QGraphicsItem.ItemPositionHasChanged:
-            delta = value - self.pos()
+        if change == QGraphicsItem.ItemPositionChange:
+            old_pos = self.pos()
+            new_pos = value
+            delta = new_pos - old_pos
             for item in self.child_items:
-                item.moveBy(delta.x(), delta.y())
+                if item.scene():
+                    item.setPos(item.pos() + delta)
+            return new_pos
+        elif change == QGraphicsItem.ItemPositionHasChanged:
+            # Recalcula bounds quando filhos se movem
+            self.calculate_bounds()
         return super().itemChange(change, value)
