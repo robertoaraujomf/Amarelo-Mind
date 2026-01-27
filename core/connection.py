@@ -14,40 +14,25 @@ class SmartConnection(QGraphicsPathItem):
         self.update_path()
 
     def update_path(self):
-        # Verifica se os objetos ainda existem na cena antes de calcular
         if not self.source.scene() or not self.target.scene():
             return
-        
-        source_center = self.source.sceneBoundingRect().center()
-        target_center = self.target.sceneBoundingRect().center()
-        
-        # Calcula distância e direção
-        dx = target_center.x() - source_center.x()
-        dy = target_center.y() - source_center.y()
-        distance = (dx**2 + dy**2)**0.5
-        
-        # Cria caminho curvo se necessário (quando objetos estão próximos ou sobrepostos)
+
+        sc = self.source.sceneBoundingRect().center()
+        tc = self.target.sceneBoundingRect().center()
+        dx = tc.x() - sc.x()
+        dy = tc.y() - sc.y()
+        dist = max((dx**2 + dy**2)**0.5, 1)
+
         path = QPainterPath()
-        path.moveTo(source_center)
-        
-        if distance < 100:  # Se muito próximos, usa curva
-            # Curva suave com ponto de controle no meio
-            control1 = QPointF(source_center.x() + dx * 0.5, source_center.y() - 30)
-            control2 = QPointF(source_center.x() + dx * 0.5, target_center.y() + 30)
-            path.cubicTo(control1, control2, target_center)
-        else:
-            # Linha reta com pequena curva se necessário para evitar sobreposição
-            mid_x = (source_center.x() + target_center.x()) / 2
-            mid_y = (source_center.y() + target_center.y()) / 2
-            
-            # Adiciona pequena curva se os objetos estão alinhados
-            if abs(dy) < 20:  # Quase horizontal
-                path.quadTo(QPointF(mid_x, mid_y - 20), target_center)
-            elif abs(dx) < 20:  # Quase vertical
-                path.quadTo(QPointF(mid_x - 20, mid_y), target_center)
-            else:
-                path.lineTo(target_center)
-        
+        path.moveTo(sc)
+
+        # Sempre curvas: Bezier cúbico com controle perpendicular ao segmento
+        k = min(0.35 * dist, 80)
+        nx, ny = -dy / dist, dx / dist
+        c1 = QPointF(sc.x() + dx * 0.5 + nx * k, sc.y() + dy * 0.5 + ny * k)
+        c2 = QPointF(sc.x() + dx * 0.5 - nx * k, sc.y() + dy * 0.5 - ny * k)
+        path.cubicTo(c1, c2, tc)
+
         self.setPath(path)
 
     def paint(self, painter, option, widget):

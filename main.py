@@ -7,10 +7,11 @@ from PySide6.QtWidgets import (
     QToolBar, QFileDialog, QFrame, QFontDialog, QColorDialog,
     QMessageBox
 )
-from PySide6.QtCore import Qt, QSize
+from PySide6.QtCore import Qt, QSize, QPointF, QRectF
 from PySide6.QtGui import (
     QPainter, QColor, QAction, QWheelEvent,
-    QUndoStack, QImage
+    QUndoStack, QImage, QUndoCommand, QFont,
+    QTextCursor, QTextCharFormat
 )
 
 # ======================================================
@@ -19,11 +20,60 @@ from PySide6.QtGui import (
 BASE_DIR = os.path.dirname(os.path.abspath(__file__))
 
 from core.icon_manager import IconManager
+from core.persistence import PersistenceManager
+from core.item_filter import ItemFilter
 IconManager.set_icons_base(BASE_DIR)
 
 from items.shapes import StyledNode
 from items.group_item import GroupNode
 from core.connection import SmartConnection
+
+
+# ======================================================
+# COMANDOS UNDO/REDO
+# ======================================================
+class AddItemCommand(QUndoCommand):
+    """Comando para adicionar um item à cena"""
+    def __init__(self, scene, item, description="Adicionar objeto"):
+        super().__init__(description)
+        self.scene = scene
+        self.item = item
+
+    def redo(self):
+        self.scene.addItem(self.item)
+
+    def undo(self):
+        self.scene.removeItem(self.item)
+
+
+class RemoveItemCommand(QUndoCommand):
+    """Comando para remover um item da cena"""
+    def __init__(self, scene, item, description="Remover objeto"):
+        super().__init__(description)
+        self.scene = scene
+        self.item = item
+
+    def redo(self):
+        self.scene.removeItem(self.item)
+
+    def undo(self):
+        self.scene.addItem(self.item)
+
+
+class MoveItemCommand(QUndoCommand):
+    """Comando para mover um item na cena"""
+    def __init__(self, item, old_pos, new_pos, description="Mover objeto"):
+        super().__init__(description)
+        self.item = item
+        self.old_pos = old_pos
+        self.new_pos = new_pos
+
+    def redo(self):
+        self.item.setPos(self.new_pos)
+
+    def undo(self):
+        self.item.setPos(self.old_pos)
+
 
 
 # ======================================================
@@ -50,26 +100,63 @@ class InfiniteCanvas(QGraphicsView):
 
         self._panning = False
         self._last_pos = None
+        self.undo_stack = None
+        self._item_positions = {}  # Rastreia posições originais para Undo/Redo
+
+    def set_undo_stack(self, undo_stack):
+        """Define o stack de Undo/Redo"""
+        self.undo_stack = undo_stack
 
     def wheelEvent(self, event: QWheelEvent):
         factor = 1.15 if event.angleDelta().y() > 0 else 0.85
         self.scale(factor, factor)
 
     def mousePressEvent(self, event):
-        # pan apenas em área vazia e sem seleção
-        if (
-            event.button() == Qt.LeftButton
-            and not self.itemAt(event.position().toPoint())
-            and not self.scene().selectedItems()
-        ):
-            self._panning = True
-            self._last_pos = event.position().toPoint()
-            self.setCursor(Qt.ClosedHandCursor)
+        """
+        Controle do mouse:
+        - Botão esquerdo: move objeto, seleciona, ou pan (se vazio)
+        - Botão direito: seleção retangular
+        """
+        # BOTÃO DIREITO: Seleção retangular
+        if event.button() == Qt.RightButton:
+            # Inicia seleção retangular com o botão direito
+            self.setDragMode(QGraphicsView.RubberBandDrag)
+            super().mousePressEvent(event)
+            return
+
+        # BOTÃO ESQUERDO
+        if event.button() == Qt.LeftButton:
+            item_clicked = self.itemAt(event.position().toPoint())
+            
+            # Se clicou em um item
+            if item_clicked:
+                # Se não está selecionado e Ctrl não foi pressionado, deseleciona outros
+                if not item_clicked.isSelected() and not (event.modifiers() & Qt.ControlModifier):
+                    self.scene().clearSelection()
+                
+                # Registra a posição original para movimento
+                if hasattr(item_clicked, 'setPos'):
+                    self._item_positions[item_clicked] = item_clicked.pos()
+                
+                # Processa o clique normal (seleção)
+                super().mousePressEvent(event)
+                return
+            
+            # Se não clicou em item e não há seleção: inicia pan
+            if not self.scene().selectedItems():
+                self._panning = True
+                self._last_pos = event.position().toPoint()
+                self.setCursor(Qt.ClosedHandCursor)
+                return
+            
+            # Se há seleção, processa clique normal (deseleciona)
+            super().mousePressEvent(event)
             return
 
         super().mousePressEvent(event)
 
     def mouseMoveEvent(self, event):
+        # Se está fazendo pan
         if self._panning:
             delta = event.position().toPoint() - self._last_pos
             self._last_pos = event.position().toPoint()
@@ -84,8 +171,33 @@ class InfiniteCanvas(QGraphicsView):
         super().mouseMoveEvent(event)
 
     def mouseReleaseEvent(self, event):
-        self._panning = False
-        self.setCursor(Qt.ArrowCursor)
+        # Se estava fazendo pan
+        if self._panning and event.button() == Qt.LeftButton:
+            self._panning = False
+            self.setCursor(Qt.ArrowCursor)
+            self._item_positions.clear()
+            return
+
+        # Se era seleção retangular com botão direito
+        if event.button() == Qt.RightButton:
+            self.setDragMode(QGraphicsView.NoDrag)
+            super().mouseReleaseEvent(event)
+            return
+
+        # Se estava movendo um item com botão esquerdo
+        if event.button() == Qt.LeftButton:
+            # Registra movimento no Undo/Redo se o item foi movido
+            if self._item_positions:
+                for item, old_pos in self._item_positions.items():
+                    new_pos = item.pos()
+                    if old_pos != new_pos and self.undo_stack:
+                        cmd = MoveItemCommand(item, old_pos, new_pos, "Mover objeto")
+                        self.undo_stack.push(cmd)
+                self._item_positions.clear()
+            
+            super().mouseReleaseEvent(event)
+            return
+
         super().mouseReleaseEvent(event)
 
 
@@ -101,13 +213,20 @@ class AmareloMainWindow(QMainWindow):
         self.undo_stack = QUndoStack(self)
         self.current_file = None
         self.groups = []
+        
+        # Gerenciador de persistência
+        self.persistence = PersistenceManager()
 
         # Alinhar ativo por padrão
         self.alinhar_ativo = True
 
         self.scene = QGraphicsScene(-10000, -10000, 20000, 20000)
         self.view = InfiniteCanvas(self.scene, self)
+        self.view.set_undo_stack(self.undo_stack)
         self.setCentralWidget(self.view)
+        
+        # Filtro de itens
+        self.item_filter = ItemFilter(self.scene)
 
         self.load_styles()
         self.setup_toolbar()
@@ -214,7 +333,33 @@ class AmareloMainWindow(QMainWindow):
     # FUNCIONALIDADES
     # --------------------------------------------------
     def new_window(self):
-        AmareloMainWindow().show()
+        """Abre nova janela com canvas vazio; mantém a atual aberta com seu conteúdo."""
+        win = AmareloMainWindow()
+        win.current_file = None
+        win._update_window_title()
+        win.show()
+        win.raise_()
+        win.activateWindow()
+
+    def set_node_style(self, style_type):
+        """Define o estilo de cor para os nós selecionados"""
+        for item in self.scene.selectedItems():
+            if isinstance(item, StyledNode):
+                item.set_node_type(style_type)
+    
+    def select_all_by_type(self, node_type: str):
+        """Seleciona todos os nós de um tipo específico"""
+        self.item_filter.select_by_type(node_type)
+    
+    def select_all_by_text(self, search_text: str):
+        """Seleciona todos os nós que contêm um texto"""
+        self.item_filter.select_by_text(search_text)
+    
+    def apply_style_to_filtered(self, style_type: str):
+        """Aplica estilo a todos os itens filtrados"""
+        for item in self.item_filter.get_filtered_items():
+            if isinstance(item, StyledNode):
+                item.set_node_type(style_type)
 
     def add_object(self):
         sel = self.scene.selectedItems()
@@ -223,19 +368,22 @@ class AmareloMainWindow(QMainWindow):
             source = sel[0]
             pos = source.pos() + source.boundingRect().bottomRight()
             node = StyledNode(pos.x(), pos.y())
-            self.scene.addItem(node)
-            self.scene.addItem(SmartConnection(source, node))
+            self.undo_stack.push(AddItemCommand(self.scene, node, "Adicionar objeto"))
+            
+            connection = SmartConnection(source, node)
+            self.undo_stack.push(AddItemCommand(self.scene, connection, "Conectar objeto"))
         else:
             pos = self.view.mapToScene(self.view.viewport().rect().center())
             node = StyledNode(pos.x(), pos.y())
-            self.scene.addItem(node)
+            self.undo_stack.push(AddItemCommand(self.scene, node, "Adicionar objeto"))
 
+        # Seleciona o novo nó
         node.setSelected(True)
         node.text.setFocus(Qt.OtherFocusReason)
 
     def delete_selected(self):
-        for item in self.scene.selectedItems():
-            self.scene.removeItem(item)
+        for item in self.scene.selectedItems()[:]:  # Cria cópia da lista
+            self.undo_stack.push(RemoveItemCommand(self.scene, item, "Remover objeto"))
 
     def toggle_group(self):
         sel = self.scene.selectedItems()
@@ -245,15 +393,16 @@ class AmareloMainWindow(QMainWindow):
         if isinstance(sel[0].parentItem(), GroupNode):
             group = sel[0].parentItem()
             group.ungroup()
-            self.scene.removeItem(group)
+            self.undo_stack.push(RemoveItemCommand(self.scene, group, "Desagrupar"))
         else:
             group = GroupNode(sel)
-            self.scene.addItem(group)
+            self.undo_stack.push(AddItemCommand(self.scene, group, "Agrupar"))
 
     def connect_nodes(self):
         sel = [i for i in self.scene.selectedItems() if isinstance(i, StyledNode)]
         for i in range(len(sel) - 1):
-            self.scene.addItem(SmartConnection(sel[i], sel[i + 1]))
+            connection = SmartConnection(sel[i], sel[i + 1])
+            self.undo_stack.push(AddItemCommand(self.scene, connection, "Conectar nós"))
 
     def copy_content(self):
         sel = self.scene.selectedItems()
@@ -267,31 +416,95 @@ class AmareloMainWindow(QMainWindow):
 
     def change_font(self):
         font, ok = QFontDialog.getFont(self)
-        if ok:
-            for item in self.scene.selectedItems():
-                if isinstance(item, StyledNode):
-                    item.set_font(font)
+        if not ok:
+            return
+        for item in self.scene.selectedItems():
+            if not isinstance(item, StyledNode):
+                continue
+            cursor = item.text.textCursor()
+            if cursor.hasSelection():
+                fmt = QTextCharFormat()
+                fmt.setFont(font)
+                cursor.mergeCharFormat(fmt)
+                item.text.setTextCursor(cursor)
+            else:
+                item.set_font(font)
 
     def change_colors(self):
-        color = QColorDialog.getColor(Qt.white, self)
-        if color.isValid():
-            for item in self.scene.selectedItems():
-                if isinstance(item, StyledNode):
+        sel = [i for i in self.scene.selectedItems() if isinstance(i, StyledNode)]
+        if not sel:
+            return
+        has_text_sel = any(it.text.textCursor().hasSelection() for it in sel)
+        if has_text_sel:
+            color = QColorDialog.getColor(Qt.black, self, "Cor da fonte")
+            if not color.isValid():
+                return
+            fmt = QTextCharFormat()
+            fmt.setForeground(color)
+            for item in sel:
+                cursor = item.text.textCursor()
+                if cursor.hasSelection():
+                    cursor.mergeCharFormat(fmt)
+                    item.text.setTextCursor(cursor)
+        else:
+            color = QColorDialog.getColor(Qt.white, self, "Cor de fundo")
+            if color.isValid():
+                for item in sel:
                     item.set_background(color)
 
     def toggle_shadow(self):
         for item in self.scene.selectedItems():
-            item.toggle_shadow()
+            if isinstance(item, StyledNode):
+                item.toggle_shadow()
 
     def toggle_align(self):
-        self.alinhar_ativo = not self.alinhar_ativo
-        self.act_align.setChecked(self.alinhar_ativo)
+        self.alinhar_ativo = self.act_align.isChecked()
+
+    def _update_window_title(self):
+        """Atualiza a barra de título: Amarelo Mind - nome.amind ou Amarelo Mind"""
+        if self.current_file:
+            name = os.path.basename(self.current_file)
+            self.setWindowTitle(f"Amarelo Mind - {name}")
+        else:
+            self.setWindowTitle("Amarelo Mind")
 
     def save_project(self):
-        QMessageBox.information(self, "Salvar", "Salvar ainda não implementado.")
+        """Salva o projeto em JSON"""
+        if not self.scene.items():
+            QMessageBox.warning(self, "Atenção", "Não há objetos para salvar.")
+            return
+
+        path = self.current_file
+        if not path:
+            path, _ = QFileDialog.getSaveFileName(
+                self, "Salvar Projeto", "", "Amarelo Mind (*.amind);;JSON (*.json)"
+            )
+            if not path:
+                return
+            if not path.endswith(".amind") and not path.endswith(".json"):
+                path += ".amind"
+            self.current_file = path
+
+        if self.persistence.save_to_file(path, self.scene):
+            self._update_window_title()
+            QMessageBox.information(self, "Sucesso", f"Projeto salvo em:\n{path}")
+        else:
+            QMessageBox.critical(self, "Erro", "Falha ao salvar o projeto.")
 
     def open_project(self):
-        QMessageBox.information(self, "Abrir", "Abrir ainda não implementado.")
+        """Abre um projeto salvo"""
+        path, _ = QFileDialog.getOpenFileName(
+            self, "Abrir Projeto", "", "Amarelo Mind (*.amind);;JSON (*.json)"
+        )
+        if not path:
+            return
+
+        self.current_file = path
+        if self.persistence.load_from_file(path, self.scene):
+            self._update_window_title()
+            QMessageBox.information(self, "Sucesso", f"Projeto carregado de:\n{path}")
+        else:
+            QMessageBox.critical(self, "Erro", "Falha ao carregar o projeto.")
 
     def export_png(self):
         if not self.scene.items():
@@ -303,17 +516,24 @@ class AmareloMainWindow(QMainWindow):
         if not path:
             return
 
-        rect = self.scene.itemsBoundingRect()
-        image = QImage(
-            int(rect.width()),
-            int(rect.height()),
-            QImage.Format_ARGB32
-        )
-        image.fill(Qt.transparent)
+        rect = self.scene.itemsBoundingRect().adjusted(-20, -20, 20, 20)
+        w, h = int(rect.width()), int(rect.height())
+        if w <= 0 or h <= 0:
+            return
+
+        image = QImage(w, h, QImage.Format_ARGB32)
+        image.fill(QColor("#f7d5a1"))
 
         painter = QPainter(image)
-        painter.translate(-rect.topLeft())
-        self.scene.render(painter)
+        painter.setRenderHint(QPainter.Antialiasing)
+        painter.setRenderHint(QPainter.TextAntialiasing)
+        painter.setRenderHint(QPainter.SmoothPixmapTransform)
+        self.scene.render(
+            painter,
+            target=QRectF(0, 0, w, h),
+            source=rect,
+            mode=Qt.IgnoreAspectRatio
+        )
         painter.end()
 
         image.save(path)
