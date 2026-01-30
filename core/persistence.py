@@ -1,7 +1,7 @@
 import json
 import os
 from typing import Dict, List, Any
-
+from PySide6.QtGui import QColor
 
 class PersistenceManager:
     """Gerencia salvamento e carregamento de projetos Amarelo Mind"""
@@ -51,7 +51,8 @@ class PersistenceManager:
                         "h": item.rect().height(),
                         "text": item.get_text(),
                         "type": item.node_type,
-                        "shadow": item.has_shadow
+                        "shadow": item.has_shadow,
+                        "custom_color": item.custom_color
                     }
                     data["nodes"].append(node_data)
                     nodes_by_id[node_id] = node_data
@@ -113,6 +114,11 @@ class PersistenceManager:
                 )
                 node.set_text(node_data.get("text", ""))
                 node.update_color()
+                
+                custom_color = node_data.get("custom_color")
+                if custom_color:
+                    node.set_background(QColor(custom_color))
+                
                 if not node_data.get("shadow", True):
                     node.toggle_shadow()
                 scene.addItem(node)

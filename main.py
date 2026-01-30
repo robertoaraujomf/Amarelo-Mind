@@ -5,7 +5,7 @@ import json
 from PySide6.QtWidgets import (
     QApplication, QMainWindow, QGraphicsView, QGraphicsScene,
     QToolBar, QFileDialog, QFrame, QFontDialog, QColorDialog,
-    QMessageBox
+    QMessageBox, QGraphicsTextItem
 )
 from PySide6.QtCore import Qt, QSize, QPointF, QRectF
 from PySide6.QtGui import (
@@ -24,7 +24,7 @@ from core.persistence import PersistenceManager
 from core.item_filter import ItemFilter
 IconManager.set_icons_base(BASE_DIR)
 
-from items.shapes import StyledNode
+from items.shapes import StyledNode, Handle
 from items.group_item import GroupNode
 from core.connection import SmartConnection
 
@@ -119,6 +119,12 @@ class InfiniteCanvas(QGraphicsView):
         """
         # BOTÃO DIREITO: Seleção retangular
         if event.button() == Qt.RightButton:
+            # Se clicou em um Handle, permite resize
+            item = self.itemAt(event.position().toPoint())
+            if isinstance(item, Handle):
+                super().mousePressEvent(event)
+                return
+
             # Inicia seleção retangular com o botão direito
             self.setDragMode(QGraphicsView.RubberBandDrag)
             super().mousePressEvent(event)
@@ -209,6 +215,7 @@ class AmareloMainWindow(QMainWindow):
         super().__init__()
 
         self.setWindowTitle("Amarelo Mind")
+        self.setWindowIcon(IconManager.load_icon("App_icon.png"))
 
         self.undo_stack = QUndoStack(self)
         self.current_file = None
@@ -366,10 +373,9 @@ class AmareloMainWindow(QMainWindow):
 
         if len(sel) == 1 and isinstance(sel[0], StyledNode):
             source = sel[0]
-            pos = source.pos() + source.boundingRect().bottomRight()
-            node = StyledNode(pos.x(), pos.y())
+            pos = source.pos() + QPointF(source.rect().width() + 20, 0)
+            node = StyledNode(pos.x(), pos.y(), brush=source.brush())
             self.undo_stack.push(AddItemCommand(self.scene, node, "Adicionar objeto"))
-            
             connection = SmartConnection(source, node)
             self.undo_stack.push(AddItemCommand(self.scene, connection, "Conectar objeto"))
         else:
@@ -377,12 +383,19 @@ class AmareloMainWindow(QMainWindow):
             node = StyledNode(pos.x(), pos.y())
             self.undo_stack.push(AddItemCommand(self.scene, node, "Adicionar objeto"))
 
-        # Seleciona o novo nó
+        self.scene.clearSelection()
         node.setSelected(True)
         node.text.setFocus(Qt.OtherFocusReason)
 
     def delete_selected(self):
-        for item in self.scene.selectedItems()[:]:  # Cria cópia da lista
+        to_remove = list(self.scene.selectedItems())
+        seen_conn = set()
+        for item in to_remove:
+            if isinstance(item, StyledNode):
+                for conn in self.scene.items():
+                    if isinstance(conn, SmartConnection) and conn not in seen_conn and (conn.source == item or conn.target == item):
+                        seen_conn.add(conn)
+                        self.undo_stack.push(RemoveItemCommand(self.scene, conn, "Remover conexão"))
             self.undo_stack.push(RemoveItemCommand(self.scene, item, "Remover objeto"))
 
     def toggle_group(self):
@@ -405,14 +418,45 @@ class AmareloMainWindow(QMainWindow):
             self.undo_stack.push(AddItemCommand(self.scene, connection, "Conectar nós"))
 
     def copy_content(self):
-        sel = self.scene.selectedItems()
-        if len(sel) == 1 and isinstance(sel[0], StyledNode):
-            QApplication.clipboard().setText(sel[0].get_text())
+        # 1. Tenta copiar de item de texto em foco
+        focus_item = self.scene.focusItem()
+        if isinstance(focus_item, QGraphicsTextItem) and focus_item.textCursor().hasSelection():
+            QApplication.clipboard().setText(focus_item.textCursor().selectedText())
+            return
+
+        # 2. Copia texto do nó selecionado
+        sel = [i for i in self.scene.selectedItems() if isinstance(i, StyledNode)]
+        if not sel:
+            return
+        node = sel[0]
+        # Se o texto do nó tiver seleção, usa ela (caso o foco não esteja lá por algum motivo)
+        cursor = node.text.textCursor()
+        if cursor.hasSelection():
+            QApplication.clipboard().setText(cursor.selectedText())
+        else:
+            QApplication.clipboard().setText(node.get_text())
 
     def paste_content(self):
-        sel = self.scene.selectedItems()
-        if len(sel) == 1 and isinstance(sel[0], StyledNode):
-            sel[0].set_text(QApplication.clipboard().text())
+        text = QApplication.clipboard().text()
+        if not text:
+            return
+
+        # 1. Tenta colar em item de texto em foco
+        focus_item = self.scene.focusItem()
+        if isinstance(focus_item, QGraphicsTextItem):
+            cursor = focus_item.textCursor()
+            cursor.insertText(text)
+            focus_item.setTextCursor(cursor)
+            return
+
+        # 2. Cola no nó selecionado
+        sel = [i for i in self.scene.selectedItems() if isinstance(i, StyledNode)]
+        if not sel:
+            return
+        node = sel[0]
+        cursor = node.text.textCursor()
+        cursor.insertText(text)
+        node.text.setTextCursor(cursor)
 
     def change_font(self):
         font, ok = QFontDialog.getFont(self)
@@ -487,7 +531,6 @@ class AmareloMainWindow(QMainWindow):
 
         if self.persistence.save_to_file(path, self.scene):
             self._update_window_title()
-            QMessageBox.information(self, "Sucesso", f"Projeto salvo em:\n{path}")
         else:
             QMessageBox.critical(self, "Erro", "Falha ao salvar o projeto.")
 
@@ -502,7 +545,6 @@ class AmareloMainWindow(QMainWindow):
         self.current_file = path
         if self.persistence.load_from_file(path, self.scene):
             self._update_window_title()
-            QMessageBox.information(self, "Sucesso", f"Projeto carregado de:\n{path}")
         else:
             QMessageBox.critical(self, "Erro", "Falha ao carregar o projeto.")
 
@@ -516,10 +558,8 @@ class AmareloMainWindow(QMainWindow):
         if not path:
             return
 
-        rect = self.scene.itemsBoundingRect().adjusted(-20, -20, 20, 20)
-        w, h = int(rect.width()), int(rect.height())
-        if w <= 0 or h <= 0:
-            return
+        rect = self.scene.itemsBoundingRect().adjusted(-30, -30, 30, 30)
+        w, h = max(1, int(rect.width())), max(1, int(rect.height()))
 
         image = QImage(w, h, QImage.Format_ARGB32)
         image.fill(QColor("#f7d5a1"))
@@ -530,12 +570,14 @@ class AmareloMainWindow(QMainWindow):
         painter.setRenderHint(QPainter.SmoothPixmapTransform)
         self.scene.render(
             painter,
-            target=QRectF(0, 0, w, h),
-            source=rect,
-            mode=Qt.IgnoreAspectRatio
+            QRectF(0, 0, w, h),
+            rect,
+            Qt.IgnoreAspectRatio
         )
         painter.end()
 
+        if not path.lower().endswith(".png"):
+            path += ".png"
         image.save(path)
 
 

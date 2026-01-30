@@ -10,7 +10,7 @@ class Handle(QGraphicsRectItem):
         self.pos_name = position_name
         self.setBrush(QColor("#f2f71d"))
         self.setPen(QPen(QColor("#1a1a1a"), 1))
-        self.setFlag(QGraphicsItem.ItemIsMovable)
+        # self.setFlag(QGraphicsItem.ItemIsMovable)
         self.setZValue(100)
         
         cursors = {
@@ -21,9 +21,15 @@ class Handle(QGraphicsRectItem):
         }
         self.setCursor(cursors.get(position_name, Qt.ArrowCursor))
 
+    def mousePressEvent(self, event):
+        event.accept()
+
     def mouseMoveEvent(self, event):
         # Usamos a posição global do mouse (ScenePos) para evitar o loop de movimento relativo
         self.parent_node.resize_logic(self.pos_name, event.scenePos())
+
+    def mouseReleaseEvent(self, event):
+        event.accept()
 
 class MindMapNode(QGraphicsRectItem):
     """Objeto Nó com redimensionamento livre por coordenadas de cena"""

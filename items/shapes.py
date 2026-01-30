@@ -1,15 +1,43 @@
 from PySide6.QtWidgets import (
-    QGraphicsRectItem, QGraphicsTextItem, QApplication, QGraphicsDropShadowEffect
+    QGraphicsRectItem, QGraphicsTextItem, QApplication, QGraphicsDropShadowEffect,
+    QGraphicsItem
 )
-from PySide6.QtCore import Qt, QRectF
+from PySide6.QtCore import Qt, QRectF, QPointF
 from PySide6.QtGui import (
     QColor, QBrush, QLinearGradient, QFont, QPen, QPainter
 )
 from .node_styles import NODE_COLORS, NODE_STATE
 
+MIN_W, MIN_H = 80, 50
+
+
+class Handle(QGraphicsRectItem):
+    """Handle de canto para redimensionamento manual"""
+    def __init__(self, parent_node, corner):
+        super().__init__(-7, -7, 14, 14, parent_node)
+        self.parent_node = parent_node
+        self.corner = corner  # 'tl', 'tr', 'bl', 'br'
+        self.setBrush(QColor("#f2f71d"))
+        self.setPen(QPen(QColor("#1a1a1a"), 1))
+        # self.setFlag(QGraphicsItem.ItemIsMovable)
+        self.setZValue(100)
+        self.setCursor(Qt.SizeFDiagCursor if corner in ('tl', 'br') else Qt.SizeBDiagCursor)
+
+    def mousePressEvent(self, event):
+        if event.button() == Qt.LeftButton or event.button() == Qt.RightButton:
+            event.accept()
+        else:
+            super().mousePressEvent(event)
+
+    def mouseMoveEvent(self, event):
+        self.parent_node.resize_from_corner(self.corner, event.scenePos())
+
+    def mouseReleaseEvent(self, event):
+        event.accept()
+
 
 class StyledNode(QGraphicsRectItem):
-    def __init__(self, x, y, w=200, h=100, node_type="Normal"):
+    def __init__(self, x, y, w=200, h=100, node_type="Normal", brush=None):
         super().__init__(0, 0, w, h)
 
         self.setPos(x, y)
@@ -18,20 +46,23 @@ class StyledNode(QGraphicsRectItem):
             QGraphicsRectItem.ItemIsSelectable |
             QGraphicsRectItem.ItemSendsGeometryChanges
         )
+        self.setFlag(QGraphicsItem.ItemClipsChildrenToShape, True)
 
         self.node_type = node_type
+        self.custom_color = None  # Stores custom background color hex if set
         self.has_shadow = True
         self.width = w
         self.height = h
 
-        # Padrão: borda 0px, gradiente #ffff00 -> #e8e813
-        grad = QLinearGradient(0, 0, 0, h)
-        grad.setColorAt(0, QColor("#ffff00"))
-        grad.setColorAt(1, QColor("#e8e813"))
-        self.setBrush(QBrush(grad))
+        if brush is not None:
+            self.setBrush(brush)
+        else:
+            grad = QLinearGradient(0, 0, 0, h)
+            grad.setColorAt(0, QColor("#ffff00"))
+            grad.setColorAt(1, QColor("#e8e813"))
+            self.setBrush(QBrush(grad))
         self.setPen(QPen(Qt.NoPen))
 
-        # Sombra ativa por padrão
         shadow = QGraphicsDropShadowEffect()
         shadow.setBlurRadius(10)
         shadow.setOffset(2, 2)
@@ -48,31 +79,120 @@ class StyledNode(QGraphicsRectItem):
         self.text.setFont(QFont("Segoe UI", 11))
         self.text.setTextInteractionFlags(Qt.TextEditorInteraction)
 
+        self.text.document().contentsChanged.connect(self._adjust_rect_to_text)
+        self._center_text_vertical()
+
+        self.handles = {}
+        for corner in ('tl', 'tr', 'bl', 'br'):
+            self.handles[corner] = Handle(self, corner)
+        self._update_handle_positions()
+        self._set_handles_visible(False)
+
+    def _center_text_vertical(self):
+        r = self.rect()
+        tw = self.text.boundingRect().width()
+        th = self.text.boundingRect().height()
+        self.text.setTextWidth(max(20, r.width() - 20))
+        th = self.text.boundingRect().height()
+        y = max(10, (r.height() - th) / 2)
+        self.text.setPos(10, y)
+
+    def _adjust_rect_to_text(self):
+        doc = self.text.document()
+        if not doc.isEmpty():
+            self.prepareGeometryChange()
+            ideal = doc.size()
+            r = self.rect()
+            new_w = max(MIN_W, ideal.width() + 30)
+            new_h = max(MIN_H, ideal.height() + 30)
+            if new_w != r.width() or new_h != r.height():
+                super().setRect(0, 0, new_w, new_h)
+                self.text.setTextWidth(max(20, new_w - 20))
+                self._center_text_vertical()
+                self._update_handle_positions()
+                self.width = new_w
+                self.height = new_h
+
+    def _update_handle_positions(self):
+        r = self.rect()
+        w, h = r.width(), r.height()
+        self.handles['tl'].setPos(0, 0)
+        self.handles['tr'].setPos(w, 0)
+        self.handles['bl'].setPos(0, h)
+        self.handles['br'].setPos(w, h)
+
+    def _set_handles_visible(self, visible):
+        for h in self.handles.values():
+            h.setVisible(visible)
+
+    def resize_from_corner(self, corner, scene_pos):
+        self.prepareGeometryChange()
+        local = self.mapFromScene(scene_pos)
+        r = self.rect()
+        px, py = self.pos().x(), self.pos().y()
+        w, h = r.width(), r.height()
+
+        if corner == 'tl':
+            new_w = (px + w) - (px + local.x())
+            new_h = (py + h) - (py + local.y())
+            new_w = max(MIN_W, min(new_w, w))
+            new_h = max(MIN_H, min(new_h, h))
+            self.setPos(px + w - new_w, py + h - new_h)
+            super().setRect(0, 0, new_w, new_h)
+        elif corner == 'tr':
+            new_w = max(MIN_W, local.x())
+            new_h = (py + h) - (py + local.y())
+            new_h = max(MIN_H, min(new_h, h))
+            self.setPos(px, py + h - new_h)
+            super().setRect(0, 0, new_w, new_h)
+        elif corner == 'bl':
+            new_w = (px + w) - (px + local.x())
+            new_w = max(MIN_W, min(new_w, w))
+            new_h = max(MIN_H, local.y())
+            self.setPos(px + w - new_w, py)
+            super().setRect(0, 0, new_w, new_h)
+        else:  # br
+            new_w = max(MIN_W, local.x())
+            new_h = max(MIN_H, local.y())
+            super().setRect(0, 0, new_w, new_h)
+
+        self.text.setTextWidth(max(20, self.rect().width() - 20))
+        self._center_text_vertical()
+        self._update_handle_positions()
+        self.width = self.rect().width()
+        self.height = self.rect().height()
+
+    def itemChange(self, change, value):
+        if change == QGraphicsItem.ItemSelectedChange:
+            self._set_handles_visible(bool(value))
+        if change == QGraphicsRectItem.ItemPositionChange:
+            main = QApplication.activeWindow()
+            if hasattr(main, "alinhar_ativo") and main.alinhar_ativo:
+                pos = value
+                return pos.__class__(round(pos.x() / 20) * 20, round(pos.y() / 20) * 20)
+        return super().itemChange(change, value)
+
     # -------------------------------
     # CORES E ESTILOS
     # -------------------------------
     def update_color(self):
-        """Atualiza a cor do nó baseado no tipo"""
         if self.node_type in NODE_COLORS:
             colors = NODE_COLORS[self.node_type]
-            grad = QLinearGradient(0, 0, 0, self.height)
+            grad = QLinearGradient(0, 0, 0, self.rect().height())
             grad.setColorAt(0, QColor(colors["light"]))
             grad.setColorAt(1, QColor(colors["dark"]))
             self.setBrush(QBrush(grad))
 
     def set_node_type(self, node_type):
-        """Define o tipo do nó e atualiza sua aparência"""
         self.node_type = node_type
+        self.custom_color = None
         self.update_color()
-        
-        # Atualiza cor do texto
         if node_type in ["Preto", "Azul", "Refutar"]:
             self.text.setDefaultTextColor(Qt.white)
         else:
             self.text.setDefaultTextColor(Qt.black)
 
     def toggle_shadow(self):
-        """Ativa/desativa sombra"""
         if self.has_shadow:
             self.setGraphicsEffect(None)
             self.has_shadow = False
@@ -97,32 +217,22 @@ class StyledNode(QGraphicsRectItem):
         self.text.setFont(font)
 
     def set_background(self, color):
+        self.custom_color = color.name()
         grad = QLinearGradient(0, 0, 0, self.rect().height())
         grad.setColorAt(0, color.lighter(115))
         grad.setColorAt(1, color.darker(110))
         self.setBrush(QBrush(grad))
 
-    # -------------------------------
-    # CLONAGEM E MAGNETISMO
-    # -------------------------------
     def clone_without_content(self):
-        clone = StyledNode(self.x() + 30, self.y() + 30,
-                           int(self.rect().width()), int(self.rect().height()),
-                           self.node_type)
-        clone.setBrush(self.brush())
+        r = self.rect()
+        clone = StyledNode(self.x() + 30, self.y() + 30, int(r.width()), int(r.height()),
+                          self.node_type, brush=self.brush())
+        clone.custom_color = self.custom_color
         if self.graphicsEffect():
-            clone.setGraphicsEffect(self.graphicsEffect())
+            sh = QGraphicsDropShadowEffect()
+            sh.setBlurRadius(10)
+            sh.setOffset(2, 2)
+            sh.setColor(QColor(0, 0, 0, 100))
+            clone.setGraphicsEffect(sh)
+            clone.has_shadow = True
         return clone
-
-    # -------------------------------
-    # MAGNETISMO
-    # -------------------------------
-    def itemChange(self, change, value):
-        if change == QGraphicsRectItem.ItemPositionChange:
-            main = QApplication.activeWindow()
-            if hasattr(main, "alinhar_ativo") and main.alinhar_ativo:
-                pos = value
-                x = round(pos.x() / 20) * 20
-                y = round(pos.y() / 20) * 20
-                return pos.__class__(x, y)
-        return super().itemChange(change, value)
