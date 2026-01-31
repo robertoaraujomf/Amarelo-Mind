@@ -52,30 +52,36 @@ class Handle(QGraphicsRectItem):
         self.corner = corner  # 'tl', 'tr', 'bl', 'br'
         self.setBrush(QColor("#f2f71d"))
         self.setPen(QPen(QColor("#1a1a1a"), 1))
-        # self.setFlag(QGraphicsItem.ItemIsMovable)
         self.setZValue(100)
         self.setCursor(Qt.SizeFDiagCursor if corner in ('tl', 'br') else Qt.SizeBDiagCursor)
+        # Handle NÃO é selecionável nem movável
+        self.setFlag(QGraphicsItem.ItemIsSelectable, False)
+        self.setFlag(QGraphicsItem.ItemIsMovable, False)
+        # Aceita TODOS os botões do mouse
+        self.setAcceptedMouseButtons(Qt.LeftButton | Qt.RightButton | Qt.MiddleButton)
+        self._is_resizing = False
 
     def mousePressEvent(self, event):
-        if event.button() == Qt.LeftButton or event.button() == Qt.RightButton:
-            event.accept()
-        else:
-            super().mousePressEvent(event)
-
-    def mouseMoveEvent(self, event):
-        self.parent_node.resize_from_corner(self.corner, event.scenePos())
-
-    def mouseReleaseEvent(self, event):
+        # Inicia redimensionamento
+        self._is_resizing = True
         event.accept()
 
+    def mouseMoveEvent(self, event):
+        # Redimensiona durante o movimento do mouse
+        if self._is_resizing:
+            self.parent_node.resize_from_corner(self.corner, event.scenePos())
+        event.accept()
 
+    def mouseReleaseEvent(self, event):
+        # Finaliza o redimensionamento
+        self._is_resizing = False
+        event.accept()
 class StyledNode(QGraphicsRectItem):
     def __init__(self, x, y, w=200, h=100, node_type="Normal", brush=None):
         super().__init__(0, 0, w, h)
 
         self.setPos(x, y)
         self.setFlags(
-            QGraphicsRectItem.ItemIsMovable |
             QGraphicsRectItem.ItemIsSelectable |
             QGraphicsRectItem.ItemSendsGeometryChanges
         )

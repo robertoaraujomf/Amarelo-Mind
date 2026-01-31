@@ -176,6 +176,7 @@ class InfiniteCanvas(QGraphicsView):
         """
         # Limpar seleção de texto em todos os itens quando clica fora
         item_clicked = self.itemAt(event.position().toPoint())
+        
         if not isinstance(item_clicked, (StyledNode, Handle)):
             # Clicou fora de qualquer item útil, limpar seleção de texto
             for item in self.scene().items():
@@ -185,14 +186,13 @@ class InfiniteCanvas(QGraphicsView):
                         cursor.clearSelection()
                         item.text.setTextCursor(cursor)
         
+        # Se clicou em um Handle, sempre deixa o evento passar para o Handle processar
+        if isinstance(item_clicked, Handle):
+            super().mousePressEvent(event)
+            return
+        
         # BOTÃO DIREITO: Seleção retangular
         if event.button() == Qt.RightButton:
-            # Se clicou em um Handle, permite resize
-            item = self.itemAt(event.position().toPoint())
-            if isinstance(item, Handle):
-                super().mousePressEvent(event)
-                return
-
             # Inicia seleção retangular com o botão direito
             self.setDragMode(QGraphicsView.RubberBandDrag)
             super().mousePressEvent(event)
@@ -593,7 +593,6 @@ class AmareloMainWindow(QMainWindow):
                     break
         
         if not target_node:
-            print("❌ Nenhum nó alvo encontrado")
             return
 
         # CAPTURAR INFORMAÇÕES DA SELEÇÃO ANTES DO DIÁLOGO
@@ -602,34 +601,26 @@ class AmareloMainWindow(QMainWindow):
         selection_start = cursor.selectionStart()
         selection_end = cursor.selectionEnd()
         
-        print(f"Antes do diálogo: has_selection={has_text_selection}, start={selection_start}, end={selection_end}")
-        
         # Abrir diálogo
         result = QFontDialog.getFont(target_node.text.font(), self)
         
         # Validar resultado
         if not isinstance(result, tuple) or len(result) != 2:
-            print(f"❌ Resultado inválido: {type(result)}")
             return
         
         ok, font = result  # ORDEM CORRETA: (ok, font)
-        print(f"Diálogo retornou: ok={ok}, font={font}")
         
         if not ok or not isinstance(font, QFont):
-            print(f"❌ Font inválido ou cancelado")
             return
 
         # Guardar HTML antes
         old_html = target_node.text.document().toHtml()
         
         if has_text_selection:
-            print(f"✓ Aplicando fonte a texto selecionado")
             # Aplicar apenas ao texto selecionado
             cursor = target_node.text.textCursor()
             cursor.setPosition(selection_start)
             cursor.setPosition(selection_end, QTextCursor.KeepAnchor)
-            
-            print(f"Cursor posição: {cursor.position()}, seleção: {cursor.selectionStart()}-{cursor.selectionEnd()}")
             
             # Aplicar formato
             fmt = QTextCharFormat()
@@ -639,14 +630,11 @@ class AmareloMainWindow(QMainWindow):
             # Atualizar o cursor do texto
             target_node.text.setTextCursor(cursor)
         else:
-            print(f"✓ Aplicando fonte a todo o nó")
             # Aplicar a toda a fonte do nó
             target_node.text.setFont(font)
         
         # Guardar HTML depois
         new_html = target_node.text.document().toHtml()
-        
-        print(f"HTML mudou: {old_html != new_html}")
         
         # Registrar no undo/redo se houve mudança
         if old_html != new_html:
@@ -654,9 +642,6 @@ class AmareloMainWindow(QMainWindow):
             cmd = ChangeTextHtmlCommand(target_node, old_html, new_html, "Mudar fonte")
             self.undo_stack.push(cmd)
             self.undo_stack.endMacro()
-            print("✓ Comando registrado no undo/redo")
-        else:
-            print("⚠ Nenhuma mudança detectada")
 
     def change_colors(self):
         # Determinar o nó alvo
