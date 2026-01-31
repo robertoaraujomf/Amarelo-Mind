@@ -25,6 +25,7 @@ from core.item_filter import ItemFilter
 IconManager.set_icons_base(BASE_DIR)
 
 from items.shapes import StyledNode, Handle
+from items.node_styles import NODE_STATE
 from items.group_item import GroupNode
 from core.connection import SmartConnection
 
@@ -32,6 +33,58 @@ from core.connection import SmartConnection
 # ======================================================
 # COMANDOS UNDO/REDO
 # ======================================================
+class ChangeNodeStyleCommand(QUndoCommand):
+    """Comando para alterar o estilo/cor de fundo de um nó"""
+    def __init__(self, item, old_state, new_state, description="Alterar estilo"):
+        super().__init__(description)
+        self.item = item
+        self.old_state = old_state
+        self.new_state = new_state
+
+    def redo(self):
+        self._apply_state(self.new_state)
+
+    def undo(self):
+        self._apply_state(self.old_state)
+
+    def _apply_state(self, state):
+        self.item.node_type = state['node_type']
+        if state['custom_color']:
+            self.item.set_background(QColor(state['custom_color']))
+        else:
+            self.item.set_node_type(state['node_type'])
+
+
+class ChangeTextHtmlCommand(QUndoCommand):
+    """Comando para alterar o texto/estilo (HTML) de um nó"""
+    def __init__(self, item, old_html, new_html, description="Alterar texto"):
+        super().__init__(description)
+        self.item = item
+        self.old_html = old_html
+        self.new_html = new_html
+
+    def redo(self):
+        self.item.text.setHtml(self.new_html)
+
+    def undo(self):
+        self.item.text.setHtml(self.old_html)
+
+
+class ChangeFontCommand(QUndoCommand):
+    """Comando para alterar a fonte de um nó (propriedade)"""
+    def __init__(self, item, old_font, new_font, description="Alterar fonte"):
+        super().__init__(description)
+        self.item = item
+        self.old_font = old_font
+        self.new_font = new_font
+
+    def redo(self):
+        self.item.set_font(self.new_font)
+
+    def undo(self):
+        self.item.set_font(self.old_font)
+
+
 class AddItemCommand(QUndoCommand):
     """Comando para adicionar um item à cena"""
     def __init__(self, scene, item, description="Adicionar objeto"):
@@ -261,6 +314,14 @@ class AmareloMainWindow(QMainWindow):
         tb.setToolButtonStyle(Qt.ToolButtonIconOnly)
         self.addToolBar(tb)
 
+        # Shortcuts for node styles (1-9)
+        for name, idx in NODE_STATE.items():
+            if idx > 0 and idx <= 9:
+                act = QAction(self)
+                act.setShortcut(f"{idx}")
+                act.triggered.connect(lambda checked=False, n=name: self.set_node_style(n))
+                self.addAction(act)
+
         def make_action(icon, tooltip, slot, shortcut=None):
             act = QAction(IconManager.load_icon(icon, icon[0]), "", self)
             act.setToolTip(tooltip)
@@ -329,9 +390,15 @@ class AmareloMainWindow(QMainWindow):
 
         has_sel = bool(sel)
         has_items = bool(self.scene.items())
+        
+        # Check focus for text editing
+        focus_item = self.scene.focusItem()
+        is_text_focus = isinstance(focus_item, QGraphicsTextItem)
+        
+        can_edit_style = has_sel or is_text_focus
 
-        self.act_font.setEnabled(has_sel)
-        self.act_colors.setEnabled(has_sel)
+        self.act_font.setEnabled(can_edit_style)
+        self.act_colors.setEnabled(can_edit_style)
         self.act_shadow.setEnabled(has_sel)
         self.act_group.setEnabled(len(sel) > 1)
         self.act_export.setEnabled(has_items)
@@ -350,9 +417,17 @@ class AmareloMainWindow(QMainWindow):
 
     def set_node_style(self, style_type):
         """Define o estilo de cor para os nós selecionados"""
-        for item in self.scene.selectedItems():
-            if isinstance(item, StyledNode):
-                item.set_node_type(style_type)
+        sel = [item for item in self.scene.selectedItems() if isinstance(item, StyledNode)]
+        if not sel:
+            return
+
+        self.undo_stack.beginMacro(f"Mudar estilo para {style_type}")
+        for item in sel:
+            old_state = {'node_type': item.node_type, 'custom_color': item.custom_color}
+            new_state = {'node_type': style_type, 'custom_color': None}
+            cmd = ChangeNodeStyleCommand(item, old_state, new_state)
+            self.undo_stack.push(cmd)
+        self.undo_stack.endMacro()
     
     def select_all_by_type(self, node_type: str):
         """Seleciona todos os nós de um tipo específico"""
@@ -459,42 +534,91 @@ class AmareloMainWindow(QMainWindow):
         node.text.setTextCursor(cursor)
 
     def change_font(self):
-        font, ok = QFontDialog.getFont(self)
-        if not ok:
+        result = QFontDialog.getFont(QFont(), self)
+        if isinstance(result, tuple):
+            font, ok = result
+        else:
+            font = result
+            ok = isinstance(font, QFont) and font is not None
+        
+        if not ok or not isinstance(font, QFont):
             return
+
+        targets = []
+        focus_item = self.scene.focusItem()
+        if isinstance(focus_item, QGraphicsTextItem):
+            parent = focus_item.parentItem()
+            if isinstance(parent, StyledNode):
+                targets.append(parent)
+        
         for item in self.scene.selectedItems():
-            if not isinstance(item, StyledNode):
-                continue
+            if isinstance(item, StyledNode) and item not in targets:
+                targets.append(item)
+
+        if not targets:
+            return
+
+        self.undo_stack.beginMacro("Mudar fonte")
+        for item in targets:
             cursor = item.text.textCursor()
             if cursor.hasSelection():
+                old_html = item.text.document().toHtml()
                 fmt = QTextCharFormat()
                 fmt.setFont(font)
                 cursor.mergeCharFormat(fmt)
-                item.text.setTextCursor(cursor)
+                new_html = item.text.document().toHtml()
+                cmd = ChangeTextHtmlCommand(item, old_html, new_html, "Mudar fonte")
+                self.undo_stack.push(cmd)
             else:
+                old_font = item.text.font()
                 item.set_font(font)
+                cmd = ChangeFontCommand(item, old_font, font, "Mudar fonte")
+                self.undo_stack.push(cmd)
+        self.undo_stack.endMacro()
 
     def change_colors(self):
-        sel = [i for i in self.scene.selectedItems() if isinstance(i, StyledNode)]
-        if not sel:
+        targets = []
+        focus_item = self.scene.focusItem()
+        if isinstance(focus_item, QGraphicsTextItem):
+            parent = focus_item.parentItem()
+            if isinstance(parent, StyledNode):
+                targets.append(parent)
+        
+        for item in self.scene.selectedItems():
+            if isinstance(item, StyledNode) and item not in targets:
+                targets.append(item)
+
+        if not targets:
             return
-        has_text_sel = any(it.text.textCursor().hasSelection() for it in sel)
+
+        has_text_sel = any(it.text.textCursor().hasSelection() for it in targets)
         if has_text_sel:
             color = QColorDialog.getColor(Qt.black, self, "Cor da fonte")
             if not color.isValid():
                 return
+            
+            self.undo_stack.beginMacro("Mudar cor do texto")
             fmt = QTextCharFormat()
             fmt.setForeground(color)
-            for item in sel:
+            for item in targets:
                 cursor = item.text.textCursor()
                 if cursor.hasSelection():
+                    old_html = item.text.document().toHtml()
                     cursor.mergeCharFormat(fmt)
-                    item.text.setTextCursor(cursor)
+                    new_html = item.text.document().toHtml()
+                    cmd = ChangeTextHtmlCommand(item, old_html, new_html, "Mudar cor do texto")
+                    self.undo_stack.push(cmd)
+            self.undo_stack.endMacro()
         else:
             color = QColorDialog.getColor(Qt.white, self, "Cor de fundo")
             if color.isValid():
-                for item in sel:
-                    item.set_background(color)
+                self.undo_stack.beginMacro("Mudar cor de fundo")
+                for item in targets:
+                    old_state = {'node_type': item.node_type, 'custom_color': item.custom_color}
+                    new_state = {'node_type': item.node_type, 'custom_color': color.name()}
+                    cmd = ChangeNodeStyleCommand(item, old_state, new_state)
+                    self.undo_stack.push(cmd)
+                self.undo_stack.endMacro()
 
     def toggle_shadow(self):
         for item in self.scene.selectedItems():
