@@ -54,9 +54,6 @@ class PersistenceManager:
                         "shadow": item.has_shadow,
                         "custom_color": item.custom_color
                     }
-                    # Persistir playlist de mídia se existir
-                    if hasattr(item, '_media_playlist') and item._media_playlist:
-                        node_data['media_playlist'] = list(item._media_playlist)
                     data["nodes"].append(node_data)
                     nodes_by_id[node_id] = node_data
                 
@@ -131,15 +128,6 @@ class PersistenceManager:
                 # Conectar sinais de seleção de texto se houver janela
                 if window and hasattr(node.text, 'selectionChanged'):
                     node.text.selectionChanged.connect(window.update_button_states)
-                # Reaplicar playlist de mídia se existir e anexar player visual
-                media_list = node_data.get('media_playlist')
-                if media_list:
-                    try:
-                        node._media_playlist = list(media_list)
-                        if window and hasattr(node, 'attach_media_player'):
-                            node.attach_media_player(node._media_playlist)
-                    except Exception:
-                        pass
             
             # Reconstruir conexões
             for conn_data in data.get("connections", []):
