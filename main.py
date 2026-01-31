@@ -5,7 +5,7 @@ import json
 from PySide6.QtWidgets import (
     QApplication, QMainWindow, QGraphicsView, QGraphicsScene,
     QToolBar, QFileDialog, QFrame, QFontDialog, QColorDialog,
-    QMessageBox, QGraphicsTextItem
+    QMessageBox, QGraphicsTextItem, QDialog
 )
 from PySide6.QtCore import Qt, QSize, QPointF, QRectF
 from PySide6.QtGui import (
@@ -410,7 +410,6 @@ class AmareloMainWindow(QMainWindow):
         self.act_font = make_action("Fonte.png", "Fonte", self.change_font)
         self.act_colors = make_action("Cores.png", "Cores", self.change_colors)
         self.act_shadow = make_action("Sombra.png", "Sombra", self.toggle_shadow)
-        self.act_media = make_action("Midia.png", "Mídia", self.add_media, "M")
 
         tb.addSeparator()
 
@@ -721,48 +720,6 @@ class AmareloMainWindow(QMainWindow):
     def toggle_align(self):
         self.alinhar_ativo = self.act_align.isChecked()
 
-    def add_media(self):
-        """Adiciona mídia (áudio, vídeo, imagem) ao objeto selecionado"""
-        # Verificar se há um nó selecionado
-        sel = [item for item in self.scene.selectedItems() if isinstance(item, StyledNode)]
-        if not sel:
-            QMessageBox.warning(self, "Atenção", "Selecione um objeto para adicionar mídia.")
-            return
-        
-        target_node = sel[0]
-        
-        # Diálogo para selecionar arquivo
-        file_path, _ = QFileDialog.getOpenFileName(
-            self,
-            "Selecionar mídia",
-            "",
-            "Mídia (*.mp3 *.mp4 *.wav *.avi *.mkv *.jpg *.png *.jpeg *.gif);;Áudio (*.mp3 *.wav);;Vídeo (*.mp4 *.avi *.mkv);;Imagem (*.jpg *.png *.jpeg *.gif);;Todos (*)"
-        )
-        
-        if not file_path:
-            return
-        
-        # Verificar se arquivo existe
-        if not os.path.exists(file_path):
-            QMessageBox.critical(self, "Erro", "Arquivo não encontrado.")
-            return
-        
-        # Armazenar mídia no objeto (adicionar atributo se não existir)
-        if not hasattr(target_node, '_media_playlist'):
-            target_node._media_playlist = []
-        
-        target_node._media_playlist.append(file_path)
-        
-        # Adicionar informação visual ao texto do nó
-        file_name = os.path.basename(file_path)
-        current_text = target_node.get_text()
-        
-        # Adicionar indicator de mídia
-        if not current_text.endswith(" 🎵"):
-            target_node.set_text(current_text + " 🎵")
-        
-        QMessageBox.information(self, "Sucesso", f"Mídia '{file_name}' adicionada ao objeto.\n\nPlaylist: {len(target_node._media_playlist)} arquivo(s)")
-
     def _update_window_title(self):
         """Atualiza a barra de título: Amarelo Mind - nome.amind ou Amarelo Mind"""
         if self.current_file:
@@ -844,7 +801,87 @@ class AmareloMainWindow(QMainWindow):
 # MAIN
 # ======================================================
 if __name__ == "__main__":
+    import os
+    from PySide6.QtCore import QCoreApplication
+
+    # NOTE: QT_OPENGL=angle is no longer reliable on Qt6; do not force it here.
+    # Instead set recommended Qt application attributes before creating QApplication.
+    # Allow user to control via environment variables:
+    # - AMARELO_OPENGL=desktop|software to prefer desktop or software OpenGL
+    # - AMARELO_DISABLE_GPU=1 to set QTWEBENGINE_CHROMIUM_FLAGS disabling GPU
+
+    # Always set share contexts attribute early
+    QCoreApplication.setAttribute(Qt.AA_ShareOpenGLContexts, True)
+
+    # Respect optional env override to force desktop or software OpenGL
+    _am_open = os.environ.get("AMARELO_OPENGL", "").lower()
+    if _am_open == "software":
+        QCoreApplication.setAttribute(Qt.AA_UseSoftwareOpenGL, True)
+    elif _am_open == "desktop":
+        QCoreApplication.setAttribute(Qt.AA_UseDesktopOpenGL, True)
+
+    # Optionally disable GPU for QtWebEngine (set before creating app)
+    if os.environ.get("AMARELO_DISABLE_GPU") == "1":
+        os.environ.setdefault("QTWEBENGINE_CHROMIUM_FLAGS", "--disable-gpu --disable-software-rasterizer")
+
+    # Quiet noisy Qt WebEngine logging by default; set AMARELO_LOG_WEBENGINE=1 to keep logs
+    if os.environ.get("AMARELO_LOG_WEBENGINE") != "1":
+        # Suppress: qt.webengine warnings (DNS doh, Permissions-Policy, etc)
+        # js category covers browser console (ch-ua-form-factors warnings)
+        os.environ.setdefault("QT_LOGGING_RULES", 
+            "qt.webengine.*=false;qt.qpa.gl=false;js.*=false;*doh*=false")
+
     app = QApplication(sys.argv)
+    # Run a quick self-test of Qt WebEngine; if it fails, attempt one automatic
+    # restart with safer flags (software GL + disable GPU). Avoid infinite loops
+    # by using AMARELO_AUTO_RETRY.
+    try:
+        if os.environ.get('AMARELO_AUTO_RETRY') != '1':
+            from PySide6.QtCore import QEventLoop, QTimer
+            try:
+                from PySide6.QtWebEngineWidgets import QWebEngineView
+            except Exception:
+                QWebEngineView = None
+
+            web_ok = True
+            if QWebEngineView is not None:
+                loop = QEventLoop()
+                view = QWebEngineView()
+                # handle loadFinished
+                ok_flag = {'ok': False}
+
+                def on_load(ok):
+                    ok_flag['ok'] = bool(ok)
+                    loop.quit()
+
+                view.loadFinished.connect(on_load)
+                # load a minimal safe page
+                view.setHtml('<html><body>test</body></html>')
+                timer = QTimer()
+                timer.setSingleShot(True)
+                timer.timeout.connect(loop.quit)
+                timer.start(3000)
+                loop.exec()
+                timer.stop()
+                web_ok = ok_flag['ok']
+                try:
+                    view.deleteLater()
+                except Exception:
+                    pass
+            else:
+                web_ok = False
+
+            if not web_ok:
+                # try an automatic restart with safer env if not yet retried
+                os.environ['AMARELO_AUTO_RETRY'] = '1'
+                os.environ['AMARELO_DISABLE_GPU'] = '1'
+                os.environ['AMARELO_OPENGL'] = 'software'
+                # restart the process
+                import sys
+                os.execv(sys.executable, [sys.executable] + sys.argv)
+    except Exception:
+        # best-effort; continue without blocking startup
+        pass
     win = AmareloMainWindow()
     win.show()
     sys.exit(app.exec())

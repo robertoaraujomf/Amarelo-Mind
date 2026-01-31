@@ -1,6 +1,6 @@
 from PySide6.QtWidgets import (
     QGraphicsRectItem, QGraphicsTextItem, QApplication, QGraphicsDropShadowEffect,
-    QGraphicsItem
+    QGraphicsItem, QGraphicsProxyWidget
 )
 from PySide6.QtCore import Qt, QRectF, QPointF, QObject, Signal
 from PySide6.QtGui import (
@@ -122,6 +122,11 @@ class StyledNode(QGraphicsRectItem):
         self.text.document().contentsChanged.connect(self._adjust_rect_to_text)
         self._center_text_vertical()
 
+        # Media proxy/widget (inicialmente nenhum)
+        self._media_proxy = None
+        self._media_widget = None
+        self._embedded_image = None
+
         self.handles = {}
         for corner in ('tl', 'tr', 'bl', 'br'):
             self.handles[corner] = Handle(self, corner)
@@ -150,6 +155,7 @@ class StyledNode(QGraphicsRectItem):
                 self.text.setTextWidth(max(20, new_w - 20))
                 self._center_text_vertical()
                 self._update_handle_positions()
+                self._update_media_proxy_geometry()
                 self.width = new_w
                 self.height = new_h
 
@@ -160,6 +166,8 @@ class StyledNode(QGraphicsRectItem):
         self.handles['tr'].setPos(w, 0)
         self.handles['bl'].setPos(0, h)
         self.handles['br'].setPos(w, h)
+        # Atualiza posição/size do proxy de mídia se existir
+        self._update_media_proxy_geometry()
 
     def _set_handles_visible(self, visible):
         for h in self.handles.values():
@@ -199,6 +207,7 @@ class StyledNode(QGraphicsRectItem):
         self.text.setTextWidth(max(20, self.rect().width() - 20))
         self._center_text_vertical()
         self._update_handle_positions()
+        self._update_media_proxy_geometry()
         self.width = self.rect().width()
         self.height = self.rect().height()
 
@@ -211,6 +220,154 @@ class StyledNode(QGraphicsRectItem):
                 pos = value
                 return pos.__class__(round(pos.x() / 20) * 20, round(pos.y() / 20) * 20)
         return super().itemChange(change, value)
+
+    def paint(self, painter, option, widget=None):
+        """Renderiza o nó com a imagem incorporada se houver"""
+        # Renderizar o background e border do nó
+        super().paint(painter, option, widget)
+
+        # Se há uma imagem incorporada, renderizá-la
+        if self._embedded_image:
+            r = self.rect()
+            # Posicionar a imagem abaixo do texto
+            img_y = 40
+            img_x = 5
+            
+            # Escalar a imagem para caber no nó
+            max_w = r.width() - 10
+            max_h = r.height() - img_y - 5
+            
+            scaled = self._embedded_image.scaled(
+                int(max_w), int(max_h),
+                Qt.KeepAspectRatio,
+                Qt.SmoothTransformation
+            )
+            
+            # Desenhar a imagem
+            painter.drawPixmap(int(img_x), int(img_y), scaled)
+
+    # -------------------------------
+    # MÍDIA (PLAYLIST E IMAGENS)
+    # -------------------------------
+    def attach_media_player(self, media_list):
+        """Anexa mídia ao nó: playlist para vídeos/áudios ou imagem incorporada.
+        
+        Para vídeos/áudios: Mostra apenas a lista (playlist)
+        Para imagens: Incorpora a imagem direto no nó
+        """
+        if not media_list:
+            return
+
+        # Separar imagens de vídeos/áudios
+        images = [m for m in media_list if self._is_image(m)]
+        videos_audios = [m for m in media_list if not self._is_image(m)]
+
+        # Se há imagem, incorporá-la
+        if images:
+            self._add_image_to_node(images[0])  # Usar primeira imagem
+
+        # Se há vídeos/áudios, mostrar playlist
+        if videos_audios:
+            self._add_playlist_to_node(videos_audios)
+
+    def _is_image(self, path: str) -> bool:
+        """Verifica se é uma imagem"""
+        path = path.lower()
+        return any(path.endswith(ext) for ext in ('.jpg', '.jpeg', '.png', '.gif', '.bmp', '.webp'))
+
+    def _add_image_to_node(self, image_path: str):
+        """Incorpora uma imagem ao nó (não em widget, renderizada direto)"""
+        try:
+            from PySide6.QtGui import QPixmap
+            import urllib.request
+
+            # Carregar imagem
+            if image_path.startswith(('http://', 'https://')):
+                # Adicionar User-Agent para evitar 403 Forbidden
+                req = urllib.request.Request(
+                    image_path,
+                    headers={'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36'}
+                )
+                data = urllib.request.urlopen(req, timeout=6).read()
+                pix = QPixmap()
+                pix.loadFromData(data)
+            else:
+                pix = QPixmap(image_path)
+
+            if not pix.isNull():
+                # Armazenar a imagem para renderizar no paint
+                self._embedded_image = pix
+                # Ajustar tamanho do nó para a imagem
+                self._adjust_size_for_image(pix)
+        except Exception as e:
+            print(f"Erro ao carregar imagem: {e}")
+
+    def _adjust_size_for_image(self, pixmap):
+        """Ajusta o tamanho do nó para acomodar a imagem"""
+        # Calcular tamanho ideal
+        max_w = 400
+        max_h = 300
+        w = min(pixmap.width(), max_w)
+        h = min(pixmap.height(), max_h)
+
+        self.prepareGeometryChange()
+        super().setRect(0, 0, max(w, 200), h + 40)  # 40px extra para espaço
+        self.width = w
+        self.height = h + 40
+
+    def _add_playlist_to_node(self, media_list):
+        """Adiciona uma playlist (vídeos/áudios) ao nó"""
+        try:
+            from core.media_widget import MediaPlaylistWidget
+        except Exception as e:
+            print(f"Erro ao importar MediaPlaylistWidget: {e}")
+            return
+
+        if self._media_proxy is None:
+            widget = MediaPlaylistWidget()
+            proxy = QGraphicsProxyWidget(self)
+            proxy.setWidget(widget)
+            proxy.setZValue(50)
+            self._media_proxy = proxy
+            self._media_widget = widget
+        else:
+            widget = self._media_widget
+
+        widget.set_playlist(media_list or [])
+
+        # Aumentar altura do nó para acomodar a playlist
+        self.prepareGeometryChange()
+        r = self.rect()
+        if r.height() < 200:
+            super().setRect(0, 0, r.width(), 200)
+            self.height = 200
+
+        self._update_media_proxy_geometry()
+
+    def remove_media_player(self):
+        if self._media_proxy:
+            try:
+                self.scene().removeItem(self._media_proxy)
+            except Exception:
+                pass
+            self._media_proxy = None
+            self._media_widget = None
+        self._embedded_image = None
+
+    def _update_media_proxy_geometry(self):
+        """Posiciona e redimensiona o proxy de mídia dentro do nó."""
+        if not self._media_proxy:
+            return
+
+        r = self.rect()
+        pw = max(100, int(r.width()) - 10)
+        ph = 140
+        x = 5
+        text_area_height = max(60, r.height() - 160)
+        y = text_area_height
+        self._media_proxy.setPos(x, y)
+        self._media_proxy.widget().setFixedWidth(pw)
+        self._media_proxy.widget().setFixedHeight(ph)
 
     # -------------------------------
     # CORES E ESTILOS
