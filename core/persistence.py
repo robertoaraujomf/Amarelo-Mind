@@ -78,13 +78,14 @@ class PersistenceManager:
             print(f"Erro ao salvar projeto: {e}")
             return False
     
-    def load_from_file(self, file_path: str, scene) -> bool:
+    def load_from_file(self, file_path: str, scene, window=None) -> bool:
         """
         Limpa a cena e reconstrói o mapa a partir do arquivo
         
         Args:
             file_path: Caminho do arquivo para carregar
             scene: Cena onde adicionar os objetos
+            window: Janela principal (opcional) para conectar sinais
         
         Returns:
             bool: True se carregado com sucesso
@@ -123,6 +124,10 @@ class PersistenceManager:
                     node.toggle_shadow()
                 scene.addItem(node)
                 self.nodes_map[node_data["id"]] = node
+                
+                # Conectar sinais de seleção de texto se houver janela
+                if window and hasattr(node.text, 'selectionChanged'):
+                    node.text.selectionChanged.connect(window.update_button_states)
             
             # Reconstruir conexões
             for conn_data in data.get("connections", []):

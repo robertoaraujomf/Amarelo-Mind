@@ -87,13 +87,17 @@ class ChangeFontCommand(QUndoCommand):
 
 class AddItemCommand(QUndoCommand):
     """Comando para adicionar um item à cena"""
-    def __init__(self, scene, item, description="Adicionar objeto"):
+    def __init__(self, scene, item, description="Adicionar objeto", window=None):
         super().__init__(description)
         self.scene = scene
         self.item = item
+        self.window = window
 
     def redo(self):
         self.scene.addItem(self.item)
+        if self.window and isinstance(self.item, StyledNode):
+            if hasattr(self.item.text, 'selectionChanged'):
+                self.item.text.selectionChanged.connect(self.window.update_button_states)
 
     def undo(self):
         self.scene.removeItem(self.item)
@@ -170,6 +174,17 @@ class InfiniteCanvas(QGraphicsView):
         - Botão esquerdo: move objeto, seleciona, ou pan (se vazio)
         - Botão direito: seleção retangular
         """
+        # Limpar seleção de texto em todos os itens quando clica fora
+        item_clicked = self.itemAt(event.position().toPoint())
+        if not isinstance(item_clicked, (StyledNode, Handle)):
+            # Clicou fora de qualquer item útil, limpar seleção de texto
+            for item in self.scene().items():
+                if isinstance(item, StyledNode):
+                    cursor = item.text.textCursor()
+                    if cursor.hasSelection():
+                        cursor.clearSelection()
+                        item.text.setTextCursor(cursor)
+        
         # BOTÃO DIREITO: Seleção retangular
         if event.button() == Qt.RightButton:
             # Se clicou em um Handle, permite resize
@@ -292,9 +307,22 @@ class AmareloMainWindow(QMainWindow):
         self.setup_toolbar()
 
         self.scene.selectionChanged.connect(self.update_button_states)
+        # Conecta sinais de seleção de texto em itens existentes
+        self._connect_text_signals()
         self.update_button_states()
 
         self.showMaximized()
+
+    def _connect_text_signals(self):
+        """Conecta sinais de seleção de texto em todos os itens StyledNode"""
+        for item in self.scene.items():
+            if isinstance(item, StyledNode):
+                if hasattr(item.text, 'selectionChanged'):
+                    try:
+                        item.text.selectionChanged.disconnect()
+                    except:
+                        pass  # Sinal não estava conectado
+                    item.text.selectionChanged.connect(self.update_button_states)
 
     # --------------------------------------------------
     # STYLES
@@ -391,17 +419,30 @@ class AmareloMainWindow(QMainWindow):
         has_sel = bool(sel)
         has_items = bool(self.scene.items())
         
-        # Check focus for text editing
-        focus_item = self.scene.focusItem()
-        is_text_focus = isinstance(focus_item, QGraphicsTextItem)
+        # Verificar se há um nó selecionado
+        has_styled_node = any(isinstance(item, StyledNode) for item in sel)
         
-        can_edit_style = has_sel or is_text_focus
+        # Verificar se há foco em um texto dentro de um nó
+        focus_item = self.scene.focusItem()
+        is_text_in_node = isinstance(focus_item, QGraphicsTextItem) and isinstance(focus_item.parentItem(), StyledNode)
+        
+        # Botões Fonte e Cores habilitados se:
+        # - Há um nó selecionado, OU
+        # - Há foco em um texto dentro de um nó
+        can_format = has_styled_node or is_text_in_node
 
-        self.act_font.setEnabled(can_edit_style)
-        self.act_colors.setEnabled(can_edit_style)
-        self.act_shadow.setEnabled(has_sel)
-        self.act_group.setEnabled(len(sel) > 1)
+        self.act_font.setEnabled(can_format)
+        self.act_colors.setEnabled(can_format)
+        self.act_shadow.setEnabled(has_styled_node)
+        self.act_group.setEnabled(len([i for i in sel if isinstance(i, StyledNode)]) > 1)
         self.act_export.setEnabled(has_items)
+
+    def _connect_text_signals(self):
+        """Conecta sinais de seleção de texto de todos os StyledNode na cena"""
+        for item in self.scene.items():
+            if isinstance(item, StyledNode):
+                if hasattr(item.text, 'selectionChanged'):
+                    item.text.selectionChanged.connect(self.update_button_states)
 
     # --------------------------------------------------
     # FUNCIONALIDADES
@@ -450,13 +491,13 @@ class AmareloMainWindow(QMainWindow):
             source = sel[0]
             pos = source.pos() + QPointF(source.rect().width() + 20, 0)
             node = StyledNode(pos.x(), pos.y(), brush=source.brush())
-            self.undo_stack.push(AddItemCommand(self.scene, node, "Adicionar objeto"))
+            self.undo_stack.push(AddItemCommand(self.scene, node, "Adicionar objeto", self))
             connection = SmartConnection(source, node)
-            self.undo_stack.push(AddItemCommand(self.scene, connection, "Conectar objeto"))
+            self.undo_stack.push(AddItemCommand(self.scene, connection, "Conectar objeto", self))
         else:
             pos = self.view.mapToScene(self.view.viewport().rect().center())
             node = StyledNode(pos.x(), pos.y())
-            self.undo_stack.push(AddItemCommand(self.scene, node, "Adicionar objeto"))
+            self.undo_stack.push(AddItemCommand(self.scene, node, "Adicionar objeto", self))
 
         self.scene.clearSelection()
         node.setSelected(True)
@@ -484,13 +525,13 @@ class AmareloMainWindow(QMainWindow):
             self.undo_stack.push(RemoveItemCommand(self.scene, group, "Desagrupar"))
         else:
             group = GroupNode(sel)
-            self.undo_stack.push(AddItemCommand(self.scene, group, "Agrupar"))
+            self.undo_stack.push(AddItemCommand(self.scene, group, "Agrupar", self))
 
     def connect_nodes(self):
         sel = [i for i in self.scene.selectedItems() if isinstance(i, StyledNode)]
         for i in range(len(sel) - 1):
             connection = SmartConnection(sel[i], sel[i + 1])
-            self.undo_stack.push(AddItemCommand(self.scene, connection, "Conectar nós"))
+            self.undo_stack.push(AddItemCommand(self.scene, connection, "Conectar nós", self))
 
     def copy_content(self):
         # 1. Tenta copiar de item de texto em foco
@@ -534,90 +575,139 @@ class AmareloMainWindow(QMainWindow):
         node.text.setTextCursor(cursor)
 
     def change_font(self):
-        result = QFontDialog.getFont(QFont(), self)
-        if isinstance(result, tuple):
-            font, ok = result
-        else:
-            font = result
-            ok = isinstance(font, QFont) and font is not None
+        # Determinar o nó alvo
+        target_node = None
+        
+        # 1. Tentar pegar nó do item com foco (texto sendo editado)
+        focus_item = self.scene.focusItem()
+        if isinstance(focus_item, QGraphicsTextItem):
+            parent = focus_item.parentItem()
+            if isinstance(parent, StyledNode):
+                target_node = parent
+        
+        # 2. Se não tem foco, usar o primeiro nó selecionado
+        if not target_node:
+            for item in self.scene.selectedItems():
+                if isinstance(item, StyledNode):
+                    target_node = item
+                    break
+        
+        if not target_node:
+            print("❌ Nenhum nó alvo encontrado")
+            return
+
+        # CAPTURAR INFORMAÇÕES DA SELEÇÃO ANTES DO DIÁLOGO
+        cursor = target_node.text.textCursor()
+        has_text_selection = cursor.hasSelection()
+        selection_start = cursor.selectionStart()
+        selection_end = cursor.selectionEnd()
+        
+        print(f"Antes do diálogo: has_selection={has_text_selection}, start={selection_start}, end={selection_end}")
+        
+        # Abrir diálogo
+        result = QFontDialog.getFont(target_node.text.font(), self)
+        
+        # Validar resultado
+        if not isinstance(result, tuple) or len(result) != 2:
+            print(f"❌ Resultado inválido: {type(result)}")
+            return
+        
+        ok, font = result  # ORDEM CORRETA: (ok, font)
+        print(f"Diálogo retornou: ok={ok}, font={font}")
         
         if not ok or not isinstance(font, QFont):
+            print(f"❌ Font inválido ou cancelado")
             return
 
-        targets = []
-        focus_item = self.scene.focusItem()
-        if isinstance(focus_item, QGraphicsTextItem):
-            parent = focus_item.parentItem()
-            if isinstance(parent, StyledNode):
-                targets.append(parent)
+        # Guardar HTML antes
+        old_html = target_node.text.document().toHtml()
         
-        for item in self.scene.selectedItems():
-            if isinstance(item, StyledNode) and item not in targets:
-                targets.append(item)
-
-        if not targets:
-            return
-
-        self.undo_stack.beginMacro("Mudar fonte")
-        for item in targets:
-            cursor = item.text.textCursor()
-            if cursor.hasSelection():
-                old_html = item.text.document().toHtml()
-                fmt = QTextCharFormat()
-                fmt.setFont(font)
-                cursor.mergeCharFormat(fmt)
-                new_html = item.text.document().toHtml()
-                cmd = ChangeTextHtmlCommand(item, old_html, new_html, "Mudar fonte")
-                self.undo_stack.push(cmd)
-            else:
-                old_font = item.text.font()
-                item.set_font(font)
-                cmd = ChangeFontCommand(item, old_font, font, "Mudar fonte")
-                self.undo_stack.push(cmd)
-        self.undo_stack.endMacro()
+        if has_text_selection:
+            print(f"✓ Aplicando fonte a texto selecionado")
+            # Aplicar apenas ao texto selecionado
+            cursor = target_node.text.textCursor()
+            cursor.setPosition(selection_start)
+            cursor.setPosition(selection_end, QTextCursor.KeepAnchor)
+            
+            print(f"Cursor posição: {cursor.position()}, seleção: {cursor.selectionStart()}-{cursor.selectionEnd()}")
+            
+            # Aplicar formato
+            fmt = QTextCharFormat()
+            fmt.setFont(font)
+            cursor.mergeCharFormat(fmt)
+            
+            # Atualizar o cursor do texto
+            target_node.text.setTextCursor(cursor)
+        else:
+            print(f"✓ Aplicando fonte a todo o nó")
+            # Aplicar a toda a fonte do nó
+            target_node.text.setFont(font)
+        
+        # Guardar HTML depois
+        new_html = target_node.text.document().toHtml()
+        
+        print(f"HTML mudou: {old_html != new_html}")
+        
+        # Registrar no undo/redo se houve mudança
+        if old_html != new_html:
+            self.undo_stack.beginMacro("Mudar fonte")
+            cmd = ChangeTextHtmlCommand(target_node, old_html, new_html, "Mudar fonte")
+            self.undo_stack.push(cmd)
+            self.undo_stack.endMacro()
+            print("✓ Comando registrado no undo/redo")
+        else:
+            print("⚠ Nenhuma mudança detectada")
 
     def change_colors(self):
-        targets = []
+        # Determinar o nó alvo
+        target_node = None
+        
+        # 1. Tentar pegar nó do item com foco (texto sendo editado)
         focus_item = self.scene.focusItem()
         if isinstance(focus_item, QGraphicsTextItem):
             parent = focus_item.parentItem()
             if isinstance(parent, StyledNode):
-                targets.append(parent)
+                target_node = parent
         
-        for item in self.scene.selectedItems():
-            if isinstance(item, StyledNode) and item not in targets:
-                targets.append(item)
-
-        if not targets:
+        # 2. Se não tem foco, usar o primeiro nó selecionado
+        if not target_node:
+            for item in self.scene.selectedItems():
+                if isinstance(item, StyledNode):
+                    target_node = item
+                    break
+        
+        if not target_node:
             return
 
-        has_text_sel = any(it.text.textCursor().hasSelection() for it in targets)
-        if has_text_sel:
-            color = QColorDialog.getColor(Qt.black, self, "Cor da fonte")
+        # Verificar se há texto selecionado
+        cursor = target_node.text.textCursor()
+        has_text_selection = cursor.hasSelection()
+        
+        if has_text_selection:
+            # Texto selecionado: mudar cor do texto
+            color = QColorDialog.getColor(Qt.black, self, "Cor do texto")
             if not color.isValid():
                 return
             
             self.undo_stack.beginMacro("Mudar cor do texto")
+            old_html = target_node.text.document().toHtml()
             fmt = QTextCharFormat()
             fmt.setForeground(color)
-            for item in targets:
-                cursor = item.text.textCursor()
-                if cursor.hasSelection():
-                    old_html = item.text.document().toHtml()
-                    cursor.mergeCharFormat(fmt)
-                    new_html = item.text.document().toHtml()
-                    cmd = ChangeTextHtmlCommand(item, old_html, new_html, "Mudar cor do texto")
-                    self.undo_stack.push(cmd)
+            cursor.mergeCharFormat(fmt)
+            target_node.text.setTextCursor(cursor)
+            new_html = target_node.text.document().toHtml()
+            cmd = ChangeTextHtmlCommand(target_node, old_html, new_html, "Mudar cor do texto")
+            self.undo_stack.push(cmd)
             self.undo_stack.endMacro()
         else:
+            # Nenhum texto selecionado: mudar cor de fundo do nó
             color = QColorDialog.getColor(Qt.white, self, "Cor de fundo")
             if color.isValid():
                 self.undo_stack.beginMacro("Mudar cor de fundo")
-                for item in targets:
-                    old_state = {'node_type': item.node_type, 'custom_color': item.custom_color}
-                    new_state = {'node_type': item.node_type, 'custom_color': color.name()}
-                    cmd = ChangeNodeStyleCommand(item, old_state, new_state)
-                    self.undo_stack.push(cmd)
+                old_state = {'node_type': target_node.node_type, 'custom_color': target_node.custom_color}
+                new_state = {'node_type': target_node.node_type, 'custom_color': color.name()}
+                cmd = ChangeNodeStyleCommand(target_node, old_state, new_state)
+                self.undo_stack.push(cmd)
                 self.undo_stack.endMacro()
 
     def toggle_shadow(self):
@@ -667,7 +757,7 @@ class AmareloMainWindow(QMainWindow):
             return
 
         self.current_file = path
-        if self.persistence.load_from_file(path, self.scene):
+        if self.persistence.load_from_file(path, self.scene, self):
             self._update_window_title()
         else:
             QMessageBox.critical(self, "Erro", "Falha ao carregar o projeto.")

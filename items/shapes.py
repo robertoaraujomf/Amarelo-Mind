@@ -2,13 +2,46 @@ from PySide6.QtWidgets import (
     QGraphicsRectItem, QGraphicsTextItem, QApplication, QGraphicsDropShadowEffect,
     QGraphicsItem
 )
-from PySide6.QtCore import Qt, QRectF, QPointF
+from PySide6.QtCore import Qt, QRectF, QPointF, QObject, Signal
 from PySide6.QtGui import (
     QColor, QBrush, QLinearGradient, QFont, QPen, QPainter
 )
 from .node_styles import NODE_COLORS, NODE_STATE
 
 MIN_W, MIN_H = 80, 50
+
+
+class SelectionAwareTextItem(QGraphicsTextItem):
+    """QGraphicsTextItem que emite sinais quando há seleção de texto"""
+    selectionChanged = Signal(bool)  # True se há seleção, False caso contrário
+    
+    def __init__(self, parent=None):
+        super().__init__(parent)
+        self._last_has_selection = False
+        # Conectar ao documento para detectar mudanças
+        self.document().contentsChanged.connect(self._check_selection)
+    
+    def _check_selection(self):
+        """Verifica se há seleção e emite sinal se mudou"""
+        has_sel = self.textCursor().hasSelection()
+        if has_sel != self._last_has_selection:
+            self._last_has_selection = has_sel
+            self.selectionChanged.emit(has_sel)
+    
+    def mouseMoveEvent(self, event):
+        """Detecta movimentos de mouse para seleção de texto"""
+        super().mouseMoveEvent(event)
+        self._check_selection()
+    
+    def mouseReleaseEvent(self, event):
+        """Detecta liberação do mouse após seleção"""
+        super().mouseReleaseEvent(event)
+        self._check_selection()
+    
+    def keyReleaseEvent(self, event):
+        """Detecta liberação de tecla para seleção com teclado"""
+        super().keyReleaseEvent(event)
+        self._check_selection()
 
 
 class Handle(QGraphicsRectItem):
@@ -69,7 +102,7 @@ class StyledNode(QGraphicsRectItem):
         shadow.setColor(QColor(0, 0, 0, 100))
         self.setGraphicsEffect(shadow)
 
-        self.text = QGraphicsTextItem(self)
+        self.text = SelectionAwareTextItem(self)
         self.text.setTextWidth(w - 20)
         self.text.setPos(10, 10)
         if node_type in ["Preto", "Azul", "Refutar"]:
