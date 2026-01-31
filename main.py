@@ -28,6 +28,7 @@ from items.shapes import StyledNode, Handle
 from items.node_styles import NODE_STATE
 from items.group_item import GroupNode
 from core.connection import SmartConnection
+from items.alignment_guides import AlignmentGuidesManager
 
 
 # ======================================================
@@ -159,6 +160,8 @@ class InfiniteCanvas(QGraphicsView):
         self._last_pos = None
         self.undo_stack = None
         self._item_positions = {}  # Rastreia posições originais para Undo/Redo
+        self.alignment_guides = AlignmentGuidesManager(scene)
+        self._moving_item = None
 
     def set_undo_stack(self, undo_stack):
         """Define o stack de Undo/Redo"""
@@ -242,9 +245,23 @@ class InfiniteCanvas(QGraphicsView):
             )
             return
 
+        # Se está movendo um item selecionado, mostrar linhas de alinhamento
+        if self.scene().selectedItems() and not self._panning:
+            moving_item = self.scene().selectedItems()[0]
+            
+            # Verificar se Ajustar está ativo (alinhar_ativo)
+            main_window = QApplication.activeWindow()
+            if hasattr(main_window, 'alinhar_ativo') and main_window.alinhar_ativo:
+                self.alignment_guides.show_guides(moving_item)
+            else:
+                self.alignment_guides.clear_guides()
+        
         super().mouseMoveEvent(event)
 
     def mouseReleaseEvent(self, event):
+        # Limpar linhas de alinhamento
+        self.alignment_guides.clear_guides()
+        
         # Se estava fazendo pan
         if self._panning and event.button() == Qt.LeftButton:
             self._panning = False
@@ -393,6 +410,7 @@ class AmareloMainWindow(QMainWindow):
         self.act_font = make_action("Fonte.png", "Fonte", self.change_font)
         self.act_colors = make_action("Cores.png", "Cores", self.change_colors)
         self.act_shadow = make_action("Sombra.png", "Sombra", self.toggle_shadow)
+        self.act_media = make_action("Midia.png", "Mídia", self.add_media, "M")
 
         tb.addSeparator()
 
@@ -702,6 +720,48 @@ class AmareloMainWindow(QMainWindow):
 
     def toggle_align(self):
         self.alinhar_ativo = self.act_align.isChecked()
+
+    def add_media(self):
+        """Adiciona mídia (áudio, vídeo, imagem) ao objeto selecionado"""
+        # Verificar se há um nó selecionado
+        sel = [item for item in self.scene.selectedItems() if isinstance(item, StyledNode)]
+        if not sel:
+            QMessageBox.warning(self, "Atenção", "Selecione um objeto para adicionar mídia.")
+            return
+        
+        target_node = sel[0]
+        
+        # Diálogo para selecionar arquivo
+        file_path, _ = QFileDialog.getOpenFileName(
+            self,
+            "Selecionar mídia",
+            "",
+            "Mídia (*.mp3 *.mp4 *.wav *.avi *.mkv *.jpg *.png *.jpeg *.gif);;Áudio (*.mp3 *.wav);;Vídeo (*.mp4 *.avi *.mkv);;Imagem (*.jpg *.png *.jpeg *.gif);;Todos (*)"
+        )
+        
+        if not file_path:
+            return
+        
+        # Verificar se arquivo existe
+        if not os.path.exists(file_path):
+            QMessageBox.critical(self, "Erro", "Arquivo não encontrado.")
+            return
+        
+        # Armazenar mídia no objeto (adicionar atributo se não existir)
+        if not hasattr(target_node, '_media_playlist'):
+            target_node._media_playlist = []
+        
+        target_node._media_playlist.append(file_path)
+        
+        # Adicionar informação visual ao texto do nó
+        file_name = os.path.basename(file_path)
+        current_text = target_node.get_text()
+        
+        # Adicionar indicator de mídia
+        if not current_text.endswith(" 🎵"):
+            target_node.set_text(current_text + " 🎵")
+        
+        QMessageBox.information(self, "Sucesso", f"Mídia '{file_name}' adicionada ao objeto.\n\nPlaylist: {len(target_node._media_playlist)} arquivo(s)")
 
     def _update_window_title(self):
         """Atualiza a barra de título: Amarelo Mind - nome.amind ou Amarelo Mind"""

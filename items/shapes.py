@@ -82,6 +82,7 @@ class StyledNode(QGraphicsRectItem):
 
         self.setPos(x, y)
         self.setFlags(
+            QGraphicsRectItem.ItemIsMovable |
             QGraphicsRectItem.ItemIsSelectable |
             QGraphicsRectItem.ItemSendsGeometryChanges
         )
