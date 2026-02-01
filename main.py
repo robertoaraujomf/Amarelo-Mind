@@ -916,6 +916,13 @@ class AmareloMainWindow(QMainWindow):
 if __name__ == "__main__":
     import os
     from PySide6.QtCore import QCoreApplication
+    # Run environment diagnostics early to capture plugin paths and environment issues
+    try:
+        from core import diagnostics as amarelo_diag
+        amarelo_diag.run_startup_checks()
+    except Exception:
+        # Never break startup on diagnostics failure
+        pass
 
     # NOTE: QT_OPENGL=angle is no longer reliable on Qt6; do not force it here.
     # Instead set recommended Qt application attributes before creating QApplication.
