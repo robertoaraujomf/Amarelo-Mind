@@ -5,7 +5,7 @@ import json
 from PySide6.QtWidgets import (
     QApplication, QMainWindow, QGraphicsView, QGraphicsScene,
     QToolBar, QFileDialog, QFrame, QFontDialog, QColorDialog,
-    QMessageBox, QGraphicsTextItem, QDialog
+    QMessageBox, QGraphicsTextItem, QDialog, QInputDialog
 )
 from PySide6.QtCore import Qt, QSize, QPointF, QRectF
 from PySide6.QtGui import (
@@ -29,6 +29,10 @@ from items.node_styles import NODE_STATE
 from items.group_item import GroupNode
 from core.connection import SmartConnection
 from items.alignment_guides import AlignmentGuidesManager
+from items.media import MediaItem
+from items.media import MediaImageItem
+from items.media import MediaSliderImageItem
+import urllib.request
 
 
 # ======================================================
@@ -407,6 +411,11 @@ class AmareloMainWindow(QMainWindow):
 
         tb.addSeparator()
 
+        # Botão Midia
+        self.act_media = make_action("Midia.png", "Mídia", self.insert_media)
+
+        tb.addSeparator()
+
         self.act_font = make_action("Fonte.png", "Fonte", self.change_font)
         self.act_colors = make_action("Cores.png", "Cores", self.change_colors)
         self.act_shadow = make_action("Sombra.png", "Sombra", self.toggle_shadow)
@@ -438,6 +447,8 @@ class AmareloMainWindow(QMainWindow):
         
         # Verificar se há um nó selecionado
         has_styled_node = any(isinstance(item, StyledNode) for item in sel)
+        # Verificar se há mídia selecionada
+        has_media_selected = any(isinstance(item, MediaItem) for item in sel)
         
         # Verificar se há foco em um texto dentro de um nó
         focus_item = self.scene.focusItem()
@@ -446,13 +457,93 @@ class AmareloMainWindow(QMainWindow):
         # Botões Fonte e Cores habilitados se:
         # - Há um nó selecionado, OU
         # - Há foco em um texto dentro de um nó
-        can_format = has_styled_node or is_text_in_node
+        can_format = (has_styled_node or is_text_in_node) and not has_media_selected
 
         self.act_font.setEnabled(can_format)
         self.act_colors.setEnabled(can_format)
-        self.act_shadow.setEnabled(has_styled_node)
+        self.act_shadow.setEnabled(has_styled_node and not has_media_selected)
         self.act_group.setEnabled(len([i for i in sel if isinstance(i, StyledNode)]) > 1)
         self.act_export.setEnabled(has_items)
+
+    def insert_media(self):
+        choice = QMessageBox(self)
+        choice.setWindowTitle("Inserir mídia")
+        choice.setText("Escolha a origem da mídia")
+        disco_btn = choice.addButton("Disco", QMessageBox.AcceptRole)
+        url_btn = choice.addButton("URL", QMessageBox.ActionRole)
+        cancel_btn = choice.addButton("Cancelar", QMessageBox.RejectRole)
+        choice.exec()
+
+        clicked = choice.clickedButton()
+        if clicked == cancel_btn:
+            return
+
+        base_pos = self.view.mapToScene(self.view.viewport().rect().center())
+        offset_x = 0
+
+        if clicked == disco_btn:
+            filters = (
+                "Imagens (*.png *.jpg *.jpeg *.bmp *.gif);;"
+                "Áudio (*.mp3 *.wav *.ogg);;"
+                "Vídeo (*.mp4 *.avi *.mkv *.mov);;"
+                "Todos (*.*)"
+            )
+            paths, _ = QFileDialog.getOpenFileNames(self, "Inserir mídia do disco", "", filters)
+            if not paths:
+                return
+            images = []
+            for p in paths:
+                img = QImage(p)
+                if not img.isNull():
+                    images.append((img, p))
+                else:
+                    # Áudio/Vídeo ainda não implementados
+                    pass
+            if not images:
+                return
+            if len(images) == 1:
+                img, src = images[0]
+                item = MediaImageItem(img, source=src)
+                item.setPos(base_pos)
+                self.undo_stack.push(AddItemCommand(self.scene, item, "Adicionar imagem", self))
+            else:
+                imgs = [im for im, _ in images]
+                slider = MediaSliderImageItem(imgs, [s for _, s in images])
+                slider.setPos(base_pos)
+                self.undo_stack.push(AddItemCommand(self.scene, slider, "Adicionar slider de imagens", self))
+            return
+
+        if clicked == url_btn:
+            text, ok = QInputDialog.getMultiLineText(self, "Inserir por URL", "Uma URL por linha:")
+            if not ok or not text.strip():
+                return
+            urls = [u.strip() for u in text.splitlines() if u.strip()]
+            img_pairs = []
+            for u in urls:
+                try:
+                    with urllib.request.urlopen(u) as resp:
+                        data = resp.read()
+                    img = QImage()
+                    img.loadFromData(data)
+                    if not img.isNull():
+                        img_pairs.append((img, u))
+                    else:
+                        # Áudio/Vídeo por URL ainda não implementados
+                        pass
+                except Exception:
+                    pass
+            if not img_pairs:
+                return
+            if len(img_pairs) == 1:
+                img, src = img_pairs[0]
+                item = MediaImageItem(img, source=src)
+                item.setPos(base_pos)
+                self.undo_stack.push(AddItemCommand(self.scene, item, "Adicionar imagem", self))
+            else:
+                imgs = [im for im, _ in img_pairs]
+                slider = MediaSliderImageItem(imgs, [s for _, s in img_pairs])
+                slider.setPos(base_pos)
+                self.undo_stack.push(AddItemCommand(self.scene, slider, "Adicionar slider de imagens", self))
 
     def _connect_text_signals(self):
         """Conecta sinais de seleção de texto de todos os StyledNode na cena"""
@@ -545,7 +636,7 @@ class AmareloMainWindow(QMainWindow):
             self.undo_stack.push(AddItemCommand(self.scene, group, "Agrupar", self))
 
     def connect_nodes(self):
-        sel = [i for i in self.scene.selectedItems() if isinstance(i, StyledNode)]
+        sel = [i for i in self.scene.selectedItems() if isinstance(i, (StyledNode, MediaItem))]
         for i in range(len(sel) - 1):
             connection = SmartConnection(sel[i], sel[i + 1])
             self.undo_stack.push(AddItemCommand(self.scene, connection, "Conectar nós", self))

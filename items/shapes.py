@@ -248,6 +248,7 @@ class StyledNode(QGraphicsRectItem):
 
     # -------------------------------
 
+        r = self.rect()
         if r.height() < 200:
             super().setRect(0, 0, r.width(), 200)
             self.height = 200
