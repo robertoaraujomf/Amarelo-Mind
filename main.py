@@ -32,6 +32,8 @@ from items.alignment_guides import AlignmentGuidesManager
 from items.media import MediaItem
 from items.media import MediaImageItem
 from items.media import MediaSliderImageItem
+from items.media import MediaAVItem
+from items.media import MediaAVSliderItem
 import urllib.request
 
 
@@ -483,7 +485,7 @@ class AmareloMainWindow(QMainWindow):
 
         if clicked == disco_btn:
             filters = (
-                "Imagens (*.png *.jpg *.jpeg *.bmp *.gif);;"
+                "Imagens (*.png *.jpg *.jpeg *.bmp *.gif *.webp);;"
                 "Áudio (*.mp3 *.wav *.ogg);;"
                 "Vídeo (*.mp4 *.avi *.mkv *.mov);;"
                 "Todos (*.*)"
@@ -492,14 +494,23 @@ class AmareloMainWindow(QMainWindow):
             if not paths:
                 return
             images = []
+            av_sources = []
             for p in paths:
                 img = QImage(p)
                 if not img.isNull():
                     images.append((img, p))
                 else:
-                    # Áudio/Vídeo ainda não implementados
-                    pass
+                    av_sources.append(p)
             if not images:
+                if av_sources:
+                    if len(av_sources) == 1:
+                        item = MediaAVItem(av_sources[0])
+                        item.setPos(base_pos)
+                        self.undo_stack.push(AddItemCommand(self.scene, item, "Adicionar mídia AV", self))
+                    else:
+                        slider = MediaAVSliderItem(av_sources)
+                        slider.setPos(base_pos)
+                        self.undo_stack.push(AddItemCommand(self.scene, slider, "Adicionar slider AV", self))
                 return
             if len(images) == 1:
                 img, src = images[0]
@@ -511,6 +522,17 @@ class AmareloMainWindow(QMainWindow):
                 slider = MediaSliderImageItem(imgs, [s for _, s in images])
                 slider.setPos(base_pos)
                 self.undo_stack.push(AddItemCommand(self.scene, slider, "Adicionar slider de imagens", self))
+            # Inserir também quaisquer arquivos AV restantes como itens individuais
+            if av_sources:
+                base_y = base_pos.y() + 20 + (images[0][0].height() if images else 0)
+                if len(av_sources) == 1:
+                    item = MediaAVItem(av_sources[0])
+                    item.setPos(QPointF(base_pos.x(), base_y))
+                    self.undo_stack.push(AddItemCommand(self.scene, item, "Adicionar mídia AV", self))
+                else:
+                    slider = MediaAVSliderItem(av_sources)
+                    slider.setPos(QPointF(base_pos.x(), base_y))
+                    self.undo_stack.push(AddItemCommand(self.scene, slider, "Adicionar slider AV", self))
             return
 
         if clicked == url_btn:
@@ -595,7 +617,7 @@ class AmareloMainWindow(QMainWindow):
     def add_object(self):
         sel = self.scene.selectedItems()
 
-        if len(sel) == 1 and isinstance(sel[0], StyledNode):
+        if len(sel) == 1 and isinstance(sel[0], (StyledNode, MediaItem)):
             source = sel[0]
             pos = source.pos() + QPointF(source.rect().width() + 20, 0)
             node = StyledNode(pos.x(), pos.y(), brush=source.brush())
