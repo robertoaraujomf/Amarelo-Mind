@@ -105,7 +105,7 @@ class StyledNode(QGraphicsRectItem):
 
         shadow = QGraphicsDropShadowEffect()
         shadow.setBlurRadius(10)
-        shadow.setOffset(2, 2)
+        shadow.setOffset(6, 6)
         shadow.setColor(QColor(0, 0, 0, 100))
         self.setGraphicsEffect(shadow)
 

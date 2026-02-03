@@ -578,13 +578,13 @@ class AmareloMainWindow(QMainWindow):
     # FUNCIONALIDADES
     # --------------------------------------------------
     def new_window(self):
-        """Abre nova janela com canvas vazio; mantém a atual aberta com seu conteúdo."""
-        win = AmareloMainWindow()
-        win.current_file = None
-        win._update_window_title()
-        win.show()
-        win.raise_()
-        win.activateWindow()
+        """Abre uma nova janela completamente independente."""
+        try:
+            new_win = AmareloMainWindow()
+            new_win.show()
+        except Exception as e:
+            QMessageBox.critical(self, "Erro", f"Não foi possível abrir uma nova janela: {e}")
+
 
     def set_node_style(self, style_type):
         """Define o estilo de cor para os nós selecionados"""
@@ -864,18 +864,31 @@ class AmareloMainWindow(QMainWindow):
             QMessageBox.critical(self, "Erro", "Falha ao salvar o projeto.")
 
     def open_project(self):
-        """Abre um projeto salvo"""
-        path, _ = QFileDialog.getOpenFileName(
-            self, "Abrir Projeto", "", "Amarelo Mind (*.amind);;JSON (*.json)"
+        """Abre um ou mais projetos salvos"""
+        paths, _ = QFileDialog.getOpenFileNames(
+            self, "Abrir Projeto(s)", "", "Amarelo Mind (*.amind);;JSON (*.json)"
         )
-        if not path:
+        if not paths:
             return
 
-        self.current_file = path
-        if self.persistence.load_from_file(path, self.scene, self):
-            self._update_window_title()
-        else:
-            QMessageBox.critical(self, "Erro", "Falha ao carregar o projeto.")
+        for i, path in enumerate(paths):
+            if i == 0:
+                # Carrega o primeiro arquivo na janela atual
+                self.current_file = path
+                if self.persistence.load_from_file(path, self.scene, self):
+                    self._update_window_title()
+                else:
+                    QMessageBox.critical(self, "Erro", f"Falha ao carregar o projeto: {os.path.basename(path)}")
+            else:
+                # Abre os arquivos subsequentes em novas janelas
+                new_win = AmareloMainWindow()
+                new_win.current_file = path
+                if new_win.persistence.load_from_file(path, new_win.scene, new_win):
+                    new_win._update_window_title()
+                    new_win.show()
+                else:
+                    QMessageBox.critical(new_win, "Erro", f"Falha ao carregar o projeto: {os.path.basename(path)}")
+
 
     def export_png(self):
         if not self.scene.items():
