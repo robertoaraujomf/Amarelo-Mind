@@ -13,6 +13,22 @@ class PersistenceManager:
         self.scene = scene
         self.nodes_map = {}  # Mapeia IDs de objetos para referência
     
+    def _update_font_from_html(self, node, html):
+        """Extrai informações de fonte do HTML e aplica ao widget"""
+        import re
+        
+        # Procurar por informações de fonte no estilo do body
+        body_style_match = re.search(r'<body[^>]*style="[^"]*font-family:([^;]+);[^"]*font-size:(\d+)pt', html)
+        if body_style_match:
+            family = body_style_match.group(1).strip('\'"')
+            size = int(body_style_match.group(2))
+            
+            # Aplicar ao widget
+            current_font = node.text.font()
+            current_font.setFamily(family)
+            current_font.setPointSize(size)
+            node.text.setFont(current_font)
+    
     def save_to_file(self, file_path: str, scene) -> bool:
         """
         Varre a cena e salva todos os dados em formato JSON
@@ -50,6 +66,7 @@ class PersistenceManager:
                         "w": item.rect().width(),
                         "h": item.rect().height(),
                         "text": item.get_text(),
+                        "html": item.text.document().toHtml(),  # Salvar HTML completo com formatação
                         "type": item.node_type,
                         "shadow": item.has_shadow,
                         "custom_color": item.custom_color
@@ -113,7 +130,14 @@ class PersistenceManager:
                     int(node_data.get("h", 100)),
                     node_data.get("type", "Normal")
                 )
-                node.set_text(node_data.get("text", ""))
+                # Usar HTML se disponível para preservar formatação
+                html_content = node_data.get("html")
+                if html_content:
+                    node.text.setHtml(html_content)
+                    # Forçar atualização da fonte do widget baseada no HTML
+                    self._update_font_from_html(node, html_content)
+                else:
+                    node.set_text(node_data.get("text", ""))
                 node.update_color()
                 
                 custom_color = node_data.get("custom_color")

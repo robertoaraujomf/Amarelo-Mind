@@ -4,7 +4,7 @@ from PySide6.QtWidgets import (
 )
 from PySide6.QtCore import Qt, QRectF, QPointF, QObject, Signal
 from PySide6.QtGui import (
-    QColor, QBrush, QLinearGradient, QFont, QPen, QPainter
+    QColor, QBrush, QLinearGradient, QFont, QPen, QPainter, QTextCursor
 )
 from .node_styles import NODE_COLORS, NODE_STATE
 
@@ -42,6 +42,39 @@ class SelectionAwareTextItem(QGraphicsTextItem):
         """Detecta liberação de tecla para seleção com teclado"""
         super().keyReleaseEvent(event)
         self._check_selection()
+    
+    def keyPressEvent(self, event):
+        """Trata eventos de teclado especiais como TAB"""
+        if event.key() == Qt.Key_Tab:
+            # Insere tabulação literal sem afetar o tamanho indevidamente
+            cursor = self.textCursor()
+            cursor.insertText("\t")
+            event.accept()
+            return
+        elif event.key() == Qt.Key_Backtab:
+            # Shift+TAB: remove tabulação ou espaços anteriores
+            cursor = self.textCursor()
+            block = cursor.block()
+            text = block.text()
+            pos = cursor.position() - block.position()
+            
+            # Remove tabulação ou espaços no início da linha atual
+            if pos > 0:
+                if text.startswith("\t") and pos > 0:
+                    # Remove uma tabulação
+                    cursor.movePosition(QTextCursor.StartOfBlock)
+                    cursor.movePosition(QTextCursor.Right, QTextCursor.KeepAnchor, 1)
+                    cursor.removeSelectedText()
+                elif text.startswith("  "):
+                    # Remove até 2 espaços
+                    cursor.movePosition(QTextCursor.StartOfBlock)
+                    spaces_to_remove = min(2, pos)
+                    cursor.movePosition(QTextCursor.Right, QTextCursor.KeepAnchor, spaces_to_remove)
+                    cursor.removeSelectedText()
+            event.accept()
+            return
+        
+        super().keyPressEvent(event)
 
 
 class Handle(QGraphicsRectItem):

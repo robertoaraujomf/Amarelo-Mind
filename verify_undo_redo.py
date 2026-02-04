@@ -104,7 +104,7 @@ class TestUndoRedo(unittest.TestCase):
     def test_change_font_undo_redo(self, mock_get_font):
         print("\nTesting change_font Undo/Redo...")
         font = QFont("Arial", 20)
-        mock_get_font.return_value = (font, True)
+        mock_get_font.return_value = (True, font)  # ORDEM CORRETA: (ok, font)
         
         initial_font = self.node.text.font()
         

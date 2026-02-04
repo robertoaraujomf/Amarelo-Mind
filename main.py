@@ -72,9 +72,30 @@ class ChangeTextHtmlCommand(QUndoCommand):
 
     def redo(self):
         self.item.text.setHtml(self.new_html)
+        # Forçar atualização da fonte do widget baseada no HTML
+        self._update_font_from_html(self.new_html)
 
     def undo(self):
         self.item.text.setHtml(self.old_html)
+        # Forçar atualização da fonte do widget baseada no HTML
+        self._update_font_from_html(self.old_html)
+    
+    def _update_font_from_html(self, html):
+        """Extrai informações de fonte do HTML e aplica ao widget"""
+        from PySide6.QtGui import QTextDocument, QFontDatabase
+        import re
+        
+        # Procurar por informações de fonte no estilo do body
+        body_style_match = re.search(r'<body[^>]*style="[^"]*font-family:([^;]+);[^"]*font-size:(\d+)pt', html)
+        if body_style_match:
+            family = body_style_match.group(1).strip('\'"')
+            size = int(body_style_match.group(2))
+            
+            # Aplicar ao widget
+            current_font = self.item.text.font()
+            current_font.setFamily(family)
+            current_font.setPointSize(size)
+            self.item.text.setFont(current_font)
 
 
 class ChangeFontCommand(QUndoCommand):
