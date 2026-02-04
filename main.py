@@ -657,13 +657,21 @@ class AmareloMainWindow(QMainWindow):
     def delete_selected(self):
         to_remove = list(self.scene.selectedItems())
         seen_conn = set()
+        
         for item in to_remove:
-            if isinstance(item, StyledNode):
+            if isinstance(item, SmartConnection):
+                # Remover conexão diretamente se selecionada
+                if item not in seen_conn:
+                    seen_conn.add(item)
+                    self.undo_stack.push(RemoveItemCommand(self.scene, item, "Remover conexão"))
+            elif isinstance(item, StyledNode):
+                # Remover conexões conectadas ao nó
                 for conn in self.scene.items():
                     if isinstance(conn, SmartConnection) and conn not in seen_conn and (conn.source == item or conn.target == item):
                         seen_conn.add(conn)
                         self.undo_stack.push(RemoveItemCommand(self.scene, conn, "Remover conexão"))
-            self.undo_stack.push(RemoveItemCommand(self.scene, item, "Remover objeto"))
+                # Remover o nó
+                self.undo_stack.push(RemoveItemCommand(self.scene, item, "Remover objeto"))
 
     def toggle_group(self):
         sel = self.scene.selectedItems()
@@ -679,10 +687,35 @@ class AmareloMainWindow(QMainWindow):
             self.undo_stack.push(AddItemCommand(self.scene, group, "Agrupar", self))
 
     def connect_nodes(self):
+        """Conecta ou desconecta objetos selecionados"""
         sel = [i for i in self.scene.selectedItems() if isinstance(i, (StyledNode, MediaItem))]
+        
+        # Verificar se já existem conexões entre os objetos selecionados
+        connections_to_remove = []
+        
         for i in range(len(sel) - 1):
-            connection = SmartConnection(sel[i], sel[i + 1])
-            self.undo_stack.push(AddItemCommand(self.scene, connection, "Conectar nós", self))
+            source = sel[i]
+            target = sel[i + 1]
+            
+            # Procurar por conexão existente entre source e target
+            existing_connection = None
+            for item in self.scene.items():
+                if isinstance(item, SmartConnection):
+                    if (item.source == source and item.target == target) or \
+                       (item.source == target and item.target == source):
+                        existing_connection = item
+                        break
+            
+            if existing_connection:
+                connections_to_remove.append(existing_connection)
+            else:
+                # Criar nova conexão
+                connection = SmartConnection(source, target)
+                self.undo_stack.push(AddItemCommand(self.scene, connection, "Conectar nós", self))
+        
+        # Remover conexões existentes (desconectar)
+        for conn in connections_to_remove:
+            self.undo_stack.push(RemoveItemCommand(self.scene, conn, "Desconectar nós"))
 
     def copy_content(self):
         # 1. Tenta copiar de item de texto em foco
@@ -948,94 +981,19 @@ class AmareloMainWindow(QMainWindow):
 # MAIN
 # ======================================================
 if __name__ == "__main__":
-    import os
-    from PySide6.QtCore import QCoreApplication
-    # Run environment diagnostics early to capture plugin paths and environment issues
-    try:
-        from core import diagnostics as amarelo_diag
-        amarelo_diag.run_startup_checks()
-    except Exception:
-        # Never break startup on diagnostics failure
-        pass
-
-    # NOTE: QT_OPENGL=angle is no longer reliable on Qt6; do not force it here.
-    # Instead set recommended Qt application attributes before creating QApplication.
-    # Allow user to control via environment variables:
-    # - AMARELO_OPENGL=desktop|software to prefer desktop or software OpenGL
-    # - AMARELO_DISABLE_GPU=1 to set QTWEBENGINE_CHROMIUM_FLAGS disabling GPU
-
-    # Always set share contexts attribute early
-    QCoreApplication.setAttribute(Qt.AA_ShareOpenGLContexts, True)
-
-    # Respect optional env override to force desktop or software OpenGL
-    _am_open = os.environ.get("AMARELO_OPENGL", "").lower()
-    if _am_open == "software":
-        QCoreApplication.setAttribute(Qt.AA_UseSoftwareOpenGL, True)
-    elif _am_open == "desktop":
-        QCoreApplication.setAttribute(Qt.AA_UseDesktopOpenGL, True)
-
-    # Optionally disable GPU for QtWebEngine (set before creating app)
-    if os.environ.get("AMARELO_DISABLE_GPU") == "1":
-        os.environ.setdefault("QTWEBENGINE_CHROMIUM_FLAGS", "--disable-gpu --disable-software-rasterizer")
-
-    # Quiet noisy Qt WebEngine logging by default; set AMARELO_LOG_WEBENGINE=1 to keep logs
-    if os.environ.get("AMARELO_LOG_WEBENGINE") != "1":
-        # Suppress: qt.webengine warnings (DNS doh, Permissions-Policy, etc)
-        # js category covers browser console (ch-ua-form-factors warnings)
-        os.environ.setdefault("QT_LOGGING_RULES", 
-            "qt.webengine.*=false;qt.qpa.gl=false;js.*=false;*doh*=false")
-
     app = QApplication(sys.argv)
-    # Run a quick self-test of Qt WebEngine; if it fails, attempt one automatic
-    # restart with safer flags (software GL + disable GPU). Avoid infinite loops
-    # by using AMARELO_AUTO_RETRY.
+    
+    # Estilo global e configuração
+    app.setStyle("Fusion")
+    
+    # Registrar ícone para arquivos .amind (Windows only)
     try:
-        if os.environ.get('AMARELO_AUTO_RETRY') != '1':
-            from PySide6.QtCore import QEventLoop, QTimer
-            try:
-                from PySide6.QtWebEngineWidgets import QWebEngineView
-            except Exception:
-                QWebEngineView = None
-
-            web_ok = True
-            if QWebEngineView is not None:
-                loop = QEventLoop()
-                view = QWebEngineView()
-                # handle loadFinished
-                ok_flag = {'ok': False}
-
-                def on_load(ok):
-                    ok_flag['ok'] = bool(ok)
-                    loop.quit()
-
-                view.loadFinished.connect(on_load)
-                # load a minimal safe page
-                view.setHtml('<html><body>test</body></html>')
-                timer = QTimer()
-                timer.setSingleShot(True)
-                timer.timeout.connect(loop.quit)
-                timer.start(3000)
-                loop.exec()
-                timer.stop()
-                web_ok = ok_flag['ok']
-                try:
-                    view.deleteLater()
-                except Exception:
-                    pass
-            else:
-                web_ok = False
-
-            if not web_ok:
-                # try an automatic restart with safer env if not yet retried
-                os.environ['AMARELO_AUTO_RETRY'] = '1'
-                os.environ['AMARELO_DISABLE_GPU'] = '1'
-                os.environ['AMARELO_OPENGL'] = 'software'
-                # restart the process
-                import sys
-                os.execv(sys.executable, [sys.executable] + sys.argv)
-    except Exception:
-        # best-effort; continue without blocking startup
-        pass
-    win = AmareloMainWindow()
-    win.show()
+        from register_icon import register_icon
+        register_icon()
+    except Exception as e:
+        print(f"Aviso: Não foi possível registrar ícone .amind: {e}")
+    
+    window = AmareloMainWindow()
+    window.show()
+    
     sys.exit(app.exec())

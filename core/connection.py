@@ -1,4 +1,4 @@
-from PySide6.QtWidgets import QGraphicsPathItem
+from PySide6.QtWidgets import QGraphicsPathItem, QStyle
 from PySide6.QtCore import Qt, QPointF
 from PySide6.QtGui import QPen, QColor, QPainterPath, QPainter
 
@@ -11,6 +11,11 @@ class SmartConnection(QGraphicsPathItem):
         # Azul conforme solicitado para o ícone de conexão
         self.setPen(QPen(QColor("#0078d4"), 3, Qt.SolidLine, Qt.RoundCap))
         self.setZValue(-1) # Garante que a linha fique por baixo dos nós
+        
+        # Tornar a conexão selecionável
+        self.setFlag(QGraphicsPathItem.ItemIsSelectable, True)
+        self.setAcceptHoverEvents(True)
+        
         self.update_path()
 
     def update_path(self):
@@ -38,4 +43,14 @@ class SmartConnection(QGraphicsPathItem):
     def paint(self, painter, option, widget):
         painter.setRenderHint(QPainter.Antialiasing)
         self.update_path() # Força o ajuste da linha durante o movimento
+        
+        # Destacar quando selecionado
+        if option.state & QStyle.State_Selected:
+            pen = self.pen()
+            pen.setColor(QColor("#ff6b35"))  # Laranja para seleção
+            pen.setWidth(5)
+            self.setPen(pen)
+        else:
+            self.setPen(QPen(QColor("#0078d4"), 3, Qt.SolidLine, Qt.RoundCap))
+        
         super().paint(painter, option, widget)
