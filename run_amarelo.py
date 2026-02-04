@@ -7,6 +7,8 @@ Silences Chromium/Qt WebEngine console spam while keeping the app fully function
 import subprocess
 import sys
 import os
+from PySide6.QtWidgets import QApplication
+from PySide6.QtGui import QIcon
 
 def run_amarelo():
     """Run main.py with stderr redirected to devnull to suppress Chromium spam."""
@@ -29,4 +31,10 @@ def run_amarelo():
         sys.exit(1)
 
 if __name__ == "__main__":
+    # Configurar ícone da aplicação
+    app = QApplication.instance() or QApplication(sys.argv)
+    icon_path = os.path.join(os.path.dirname(__file__), "assets", "icons", "App_icon.ico")
+    if os.path.exists(icon_path):
+        app.setWindowIcon(QIcon(icon_path))
+    
     run_amarelo()

@@ -290,9 +290,8 @@ class InfiniteCanvas(QGraphicsView):
             current_pos = event.position().toPoint()
             delta = current_pos - self._last_pos
             
-            # Fator adaptativo baseado na velocidade do movimento
-            delta_length = (delta.x()**2 + delta.y()**2)**0.5
-            smooth_factor = 1.0 + min(delta_length * 0.02, 1.5)  # Mais suave para rápido, mais preciso para lento
+            # Aplicar movimento suave com fator de aceleração
+            smooth_factor = 1.2  # Movimento mais amplo e responsivo
             smooth_delta = delta * smooth_factor
             
             self._last_pos = current_pos
