@@ -196,10 +196,23 @@ class StyledNode(QGraphicsRectItem):
         doc = self.text.document()
         if not doc.isEmpty():
             self.prepareGeometryChange()
+            
+            # Temporariamente remover a largura fixa para calcular o tamanho real do texto
+            old_text_width = self.text.textWidth()
+            self.text.setTextWidth(-1)  # -1 = sem limite de largura
+            
+            # Forçar atualização do layout
+            doc.adjustSize()
             ideal = doc.size()
+            
+            # Restaurar a largura do texto
+            self.text.setTextWidth(old_text_width)
+            
             r = self.rect()
+            # Calcular nova largura baseada no conteúdo real (sem wrapping forçado)
             new_w = max(MIN_W, ideal.width() + 30)
             new_h = max(MIN_H, ideal.height() + 30)
+            
             if new_w != r.width() or new_h != r.height():
                 super().setRect(0, 0, new_w, new_h)
                 self.text.setTextWidth(max(20, new_w - 20))
