@@ -169,37 +169,6 @@ class StyledNode(QGraphicsRectItem):
     def _center_text_vertical(self):
         """Centraliza o texto verticalmente no objeto"""
         r = self.rect()
-<<<<<<< HEAD
-        tw = self.text.boundingRect().width()
-        th = self.text.boundingRect().height()
-        self.text.setTextWidth(max(20, r.width() - 20))
-        th = self.text.boundingRect().height()
-        y = max(10, (r.height() - th) / 2)
-        self.text.setPos(10, y)
-=======
-        
-        # Forçar atualização do layout do texto
-        self.text.adjustSize()
-        
-        # Obter dimensões reais do texto
-        text_rect = self.text.boundingRect()
-        th = text_rect.height()
-        
-        # Calcular posição Y para centralizar verticalmente
-        y = (r.height() - th) / 2
-        
-        # Garantir que não fique negativo
-        y = max(5, y)
-        
-        # Manter X em 10 (margem esquerda)
-        x = 10
-        
-        # Aplicar posição
-        self.text.setPos(x, y)
-        
-        # Forçar atualização visual
-        self.text.update()
->>>>>>> 583efa5 (correção alinhamento vertical)
 
     def _adjust_rect_to_text(self):
         doc = self.text.document()
@@ -277,53 +246,6 @@ class StyledNode(QGraphicsRectItem):
             main = QApplication.activeWindow()
             if hasattr(main, "alinhar_ativo") and main.alinhar_ativo:
                 pos = value
-<<<<<<< HEAD
-                return pos.__class__(round(pos.x() / 20) * 20, round(pos.y() / 20) * 20)
-        return super().itemChange(change, value)
-=======
-                value = pos.__class__(round(pos.x() / 20) * 20, round(pos.y() / 20) * 20)
-        
-        # Chamar a implementação do pai (BaseNode) para atualizar conexões
-        result = super().itemChange(change, value)
-        
-        # Se a posição ou geometria mudou, recentralizar o texto
-        if change in [QGraphicsRectItem.ItemPositionHasChanged, QGraphicsItem.ItemTransformHasChanged]:
-            self._center_text_vertical()
-        
-        # Se a posição mudou, atualizar as conexões
-        if change == QGraphicsRectItem.ItemPositionHasChanged:
-            if self.scene():
-                try:
-                    from core.connection import SmartConnection
-                    # Atualizar todas as conexões que envolvem este item
-                    for item in self.scene().items():
-                        if isinstance(item, SmartConnection) and (item.source == self or item.target == self):
-                            item.update_path()
-                    
-                    # Além disso, verificar se este movimento afeta outras conexões
-                    # (objetos que agora podem estar bloqueando ou não bloqueando caminhos)
-                    self._update_all_connections()
-                except: pass
-        
-        return result
-    
-    def _update_all_connections(self):
-        """Atualiza apenas as conexões deste objeto - NÃO move outros objetos"""
-        if not self.scene():
-            return
-            
-        try:
-            from core.connection import SmartConnection
-            # Atualizar APENAS as conexões que envolvem este objeto
-            # NUNCA atualizar conexões de outros objetos (isso causaria movimento indesejado)
-            for item in self.scene().items():
-                if isinstance(item, SmartConnection):
-                    # Só atualizar se esta conexão envolve o objeto atual
-                    if item.source == self or item.target == self:
-                        item.update_path()
-        except:
-            pass
->>>>>>> 583efa5 (correção alinhamento vertical)
 
     def paint(self, painter, option, widget=None):
         """Renderiza o nó com a imagem incorporada se houver"""

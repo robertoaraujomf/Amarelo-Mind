@@ -333,36 +333,6 @@ class InfiniteCanvas(QGraphicsView):
         self.setCursor(Qt.ArrowCursor)
         return
 
-    def _start_drag_connection(self, connection, mouse_pos):
-            return
-        
-        # Se estava movendo um item com botão esquerdo
-        if event.button() == Qt.LeftButton:
-            # Registra movimento no Undo/Redo se o item foi movido
-            if self._item_positions:
-                for item, old_pos in self._item_positions.items():
-                    new_pos = item.pos()
-                    if old_pos != new_pos and self.undo_stack:
-                        cmd = MoveItemCommand(item, old_pos, new_pos, "Mover objeto")
-                        self.undo_stack.push(cmd)
-                self._item_positions.clear()
-            super().mouseReleaseEvent(event)
-            return
-
-        # Se estava movendo um item com botão esquerdo
-        if event.button() == Qt.LeftButton:
-            # Registra movimento no Undo/Redo se o item foi movido
-            if self._item_positions:
-                for item, old_pos in self._item_positions.items():
-                    new_pos = item.pos()
-                    if old_pos != new_pos and self.undo_stack:
-                        cmd = MoveItemCommand(item, old_pos, new_pos, "Mover objeto")
-                        self.undo_stack.push(cmd)
-                self._item_positions.clear()
-            
-        super().mouseReleaseEvent(event)
-
-    def _start_drag_connection(self, connection, mouse_pos):
         """Inicia arrastar uma conexão"""
         self._dragging_connection = True
         self._dragged_connection = connection
@@ -420,7 +390,7 @@ class InfiniteCanvas(QGraphicsView):
         
         # Remover offset visual
         if hasattr(self._dragged_connection, '_visual_offset'):
-        delattr(self._dragged_connection, '_visual_offset')
+            delattr(self._dragged_connection, '_visual_offset')
         
         self._dragged_connection.update_path()
         self._dragged_connection = None
