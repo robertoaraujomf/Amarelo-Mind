@@ -11,7 +11,7 @@ from PySide6.QtCore import Qt, QSize, QPointF, QRectF, QTimer
 from PySide6.QtGui import (
     QPainter, QColor, QAction, QWheelEvent,
     QUndoStack, QImage, QUndoCommand, QFont,
-    QTextCursor, QTextCharFormat
+    QTextCursor, QTextCharFormat, QPen
 )
 
 # ======================================================
@@ -172,8 +172,7 @@ class InfiniteCanvas(QGraphicsView):
         self.setRenderHints(
             QPainter.Antialiasing |
             QPainter.TextAntialiasing |
-            QPainter.SmoothPixmapTransform |
-            QPainter.NonCosmeticDefaultPen  # Melhora performance de linhas
+            QPainter.SmoothPixmapTransform
         )
 
         # Otimização de cache para items estáticos
@@ -202,6 +201,11 @@ class InfiniteCanvas(QGraphicsView):
         self._dragging_connection = False
         self._dragged_connection = None
         self._drag_offset = QPointF()
+        
+        # Sistema de drag para itens (evita mover apenas com clique)
+        self._dragging_item = None
+        self._drag_start_pos = None
+        self._is_dragging = False
 
     def set_undo_stack(self, undo_stack):
         """Define o stack de Undo/Redo"""
@@ -250,19 +254,44 @@ class InfiniteCanvas(QGraphicsView):
         # BOTÃO ESQUERDO
         if event.button() == Qt.LeftButton:
             item_clicked = self.itemAt(event.position().toPoint())
-             
+            
             # Se clicou em um item
             if item_clicked:
+                # Verificar se o item clicado é filho de um StyledNode (ex: texto)
+                parent_node = item_clicked
+                while parent_node and not isinstance(parent_node, StyledNode):
+                    parent_node = parent_node.parentItem()
+                
+                # Se encontrou um nó pai, usar o pai como item principal
+                if parent_node:
+                    item_clicked = parent_node
+                
+                # Se não está pressionando Ctrl e há múltiplos itens selecionados,
+                # deselecionar todos exceto o item clicado para mover apenas ele
+                selected_items = self.scene().selectedItems()
+                if not (event.modifiers() & Qt.ControlModifier) and len(selected_items) > 1:
+                    # Verificar se o item clicado está entre os selecionados
+                    if item_clicked in selected_items:
+                        # Deselecionar todos exceto o item clicado
+                        for item in selected_items:
+                            if item != item_clicked:
+                                item.setSelected(False)
+                
                 # Se não está selecionado e Ctrl não foi pressionado, deseleciona outros
                 if not item_clicked.isSelected() and not (event.modifiers() & Qt.ControlModifier):
                     self.scene().clearSelection()
-                 
+                
                 # Registra a posição original para movimento
                 if hasattr(item_clicked, 'setPos'):
                     self._item_positions[item_clicked] = item_clicked.pos()
-                 
-                # Processa o clique normal (seleção)
-                super().mousePressEvent(event)
+                
+                # NÃO chama super().mousePressEvent para evitar que o item se mova 
+                # apenas com o clique. O movimento será controlado manualmente no mouseMoveEvent.
+                # Seleciona o item manualmente
+                item_clicked.setSelected(True)
+                self._dragging_item = item_clicked
+                self._drag_start_pos = self.mapToScene(event.position().toPoint())
+                event.accept()
                 return
             
             # Se não clicou em item e não há seleção: inicia pan
@@ -272,8 +301,9 @@ class InfiniteCanvas(QGraphicsView):
                 self.setCursor(Qt.ClosedHandCursor)
                 return
             
-            # Se há seleção, processa clique normal (deseleciona)
-            super().mousePressEvent(event)
+            # Se há seleção mas clicou no vazio, deseleciona
+            self.scene().clearSelection()
+            event.accept()
             return
         
         super().mousePressEvent(event)
@@ -305,16 +335,30 @@ class InfiniteCanvas(QGraphicsView):
             v_scroll.setValue(v_scroll.value() - int(smooth_delta.y()))
             return
         
-        # Se está movendo um item selecionado, mostrar linhas de alinhamento
-        if self.scene().selectedItems() and not self._panning:
-            moving_item = self.scene().selectedItems()[0]
+        # Se está arrastando um item (não apenas clicou, mas realmente está movendo)
+        if self._dragging_item and event.buttons() & Qt.LeftButton:
+            current_pos = self.mapToScene(event.position().toPoint())
             
-            # Verificar se Ajustar está ativo (alinhar_ativo)
-            main_window = QApplication.activeWindow()
-            if hasattr(main_window, 'alinhar_ativo') and main_window.alinhar_ativo:
-                self.alignment_guides.show_guides(moving_item)
-            else:
-                self.alignment_guides.clear_guides()
+            # Verificar se o mouse se moveu o suficiente para considerar um drag
+            if not self._is_dragging:
+                distance = (current_pos - self._drag_start_pos).manhattanLength()
+                if distance < 5:  # Threshold de 5 pixels para considerar drag
+                    return
+                self._is_dragging = True
+            
+            # Mover o item selecionado
+            if self._dragging_item.isSelected():
+                delta = current_pos - self._drag_start_pos
+                new_pos = self._item_positions.get(self._dragging_item, self._dragging_item.pos()) + delta
+                self._dragging_item.setPos(new_pos)
+                
+                # Mostrar linhas de alinhamento se estiver ativo
+                main_window = QApplication.activeWindow()
+                if hasattr(main_window, "alinhar_ativo") and main_window.alinhar_ativo:
+                    self.alignment_guides.show_guides(self._dragging_item)
+                else:
+                    self.alignment_guides.clear_guides()
+            return
         
         super().mouseMoveEvent(event)
 
@@ -327,12 +371,26 @@ class InfiniteCanvas(QGraphicsView):
             self._end_drag_connection()
             return
         
+        # Se estava arrastando um item
+        if self._dragging_item and event.button() == Qt.LeftButton:
+            # Se não foi um drag real (apenas um clique), garantir que o item não se moveu
+            if not self._is_dragging:
+                # Restaurar posição original se houver
+                if self._dragging_item in self._item_positions:
+                    self._dragging_item.setPos(self._item_positions[self._dragging_item])
+            
+            # Resetar estado de drag
+            self._dragging_item = None
+            self._drag_start_pos = None
+            self._is_dragging = False
+            self._item_positions.clear()
+        
         # Se estava fazendo pan
         if self._panning and event.button() == Qt.LeftButton:
             self._panning = False
         self.setCursor(Qt.ArrowCursor)
-        return
 
+    def _start_drag_connection(self, connection, mouse_pos):
         """Inicia arrastar uma conexão"""
         self._dragging_connection = True
         self._dragged_connection = connection

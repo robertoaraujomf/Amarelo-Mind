@@ -169,6 +169,28 @@ class StyledNode(QGraphicsRectItem):
     def _center_text_vertical(self):
         """Centraliza o texto verticalmente no objeto"""
         r = self.rect()
+        
+        # Forçar atualização do layout do texto
+        self.text.adjustSize()
+        
+        # Obter dimensões reais do texto
+        text_rect = self.text.boundingRect()
+        th = text_rect.height()
+        
+        # Calcular posição Y para centralizar verticalmente
+        y = (r.height() - th) / 2
+        
+        # Garantir que não fique negativo
+        y = max(5, y)
+        
+        # Manter X em 10 (margem esquerda)
+        x = 10
+        
+        # Aplicar posição
+        self.text.setPos(x, y)
+        
+        # Forçar atualização visual
+        self.text.update()
 
     def _adjust_rect_to_text(self):
         doc = self.text.document()
@@ -246,6 +268,17 @@ class StyledNode(QGraphicsRectItem):
             main = QApplication.activeWindow()
             if hasattr(main, "alinhar_ativo") and main.alinhar_ativo:
                 pos = value
+        if change == QGraphicsItem.ItemPositionHasChanged:
+            # Atualizar conexões quando o nó se move
+            if self.scene():
+                try:
+                    from core.connection import SmartConnection
+                    for item in self.scene().items():
+                        if isinstance(item, SmartConnection) and (item.source == self or item.target == self):
+                            item.update_path()
+                except:
+                    pass
+        return super().itemChange(change, value)
 
     def paint(self, painter, option, widget=None):
         """Renderiza o nó com a imagem incorporada se houver"""
@@ -276,14 +309,6 @@ class StyledNode(QGraphicsRectItem):
             painter.drawPixmap(int(img_x), int(img_y), scaled)
 
     # -------------------------------
-
-        r = self.rect()
-        if r.height() < 200:
-            super().setRect(0, 0, r.width(), 200)
-            self.height = 200
-
-        self._update_media_proxy_geometry()
-
     def remove_media_player(self):
         if self._media_proxy:
             try:

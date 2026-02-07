@@ -1,0 +1,31 @@
+{
+  "version": "1.0",
+  "nodes": [
+    {
+      "id": 1,
+      "x": 100,
+      "y": 100,
+      "w": 200,
+      "h": 100,
+      "text": "Teste 1",
+      "type": "Normal",
+      "shadow": true
+    },
+    {
+      "id": 2,
+      "x": 400,
+      "y": 200,
+      "w": 200,
+      "h": 100,
+      "text": "Teste 2",
+      "type": "Normal",
+      "shadow": true
+    }
+  ],
+  "connections": [
+    {
+      "source_id": 1,
+      "target_id": 2
+    }
+  ]
+}

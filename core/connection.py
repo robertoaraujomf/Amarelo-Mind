@@ -35,20 +35,318 @@ class SmartConnection(QGraphicsPathItem):
         self.update_path()
 
     def update_path(self):
-        """Atualiza o caminho com sistema avançado usando Shapely e scipy"""
+        """Atualiza o caminho com sistema otimizado de roteamento"""
         if not self.source.scene() or not self.target.scene():
             return
 
         start = self.source.sceneBoundingRect().center()
         end = self.target.sceneBoundingRect().center()
         
-        if not SHAPELY_AVAILABLE or not SCIPY_AVAILABLE:
-            # Fallback para sistema simples sem bibliotecas avançadas
-            self._update_path_fallback(start, end)
+        # Verificar se as coordenadas são válidas
+        if not (self._is_valid_point(start) and self._is_valid_point(end)):
             return
         
-        # Sistema avançado com Shapely + scipy
-        self._update_path_advanced(start, end)
+        # Verificar distância máxima (evitar linhas infinitas)
+        dx = end.x() - start.x()
+        dy = end.y() - start.y()
+        distance = math.sqrt(dx*dx + dy*dy)
+        if distance > 10000:  # Limite de 10000 pixels
+            return
+        
+        # Usar sistema simplificado e rápido
+        self._update_path_fast(start, end)
+    
+    def _is_valid_point(self, point):
+        """Verifica se um ponto tem coordenadas válidas"""
+        import math
+        return (isinstance(point.x(), (int, float)) and 
+                isinstance(point.y(), (int, float)) and
+                not math.isnan(point.x()) and 
+                not math.isnan(point.y()) and
+                not math.isinf(point.x()) and 
+                not math.isinf(point.y()))
+
+    def _update_path_fast(self, start, end):
+        """Sistema rápido de roteamento ortogonal com desvio de obstáculos"""
+        # Verificar se há obstáculos no caminho direto
+        obstacles = self._get_obstacles_between(start, end)
+        
+        if not obstacles:
+            # Sem obstáculos - linha direta suave
+            self._create_smooth_connection(start, end)
+        else:
+            # Com obstáculos - rota ortogonal contornando
+            self._create_orthogonal_route(start, end, obstacles)
+
+    def _get_obstacles_between(self, start, end):
+        """Obtém obstáculos no caminho entre dois pontos (versão rápida)"""
+        if not self.source.scene():
+            return []
+        
+        # Importar aqui para evitar circular imports
+        from items.shapes import StyledNode
+        from items.base_node import MindMapNode
+        
+        obstacles = []
+        # Área de busca expandida
+        margin = 20
+        search_rect = QRectF(
+            min(start.x(), end.x()) - margin,
+            min(start.y(), end.y()) - margin,
+            abs(end.x() - start.x()) + margin * 2,
+            abs(end.y() - start.y()) + margin * 2
+        )
+        
+        for item in self.source.scene().items(search_rect):
+            if item in (self, self.source, self.target):
+                continue
+            # Só considerar nós principais como obstáculos (StyledNode ou MindMapNode)
+            if isinstance(item, (StyledNode, MindMapNode)):
+                rect = item.sceneBoundingRect().adjusted(-10, -10, 10, 10)
+                # Verificar se o retângulo intercepta a linha direta
+                if self._line_intersects_rect_fast(start, end, rect):
+                    obstacles.append(rect)
+        
+        return obstacles
+
+    def _line_intersects_rect_fast(self, start, end, rect):
+        """Verificação rápida de interseção linha-retângulo"""
+        # Se um dos pontos está dentro do retângulo, não considerar interseção
+        if rect.contains(start) or rect.contains(end):
+            return False
+        
+        # Verificar interseção com as 4 bordas do retângulo
+        lines = [
+            (QPointF(rect.left(), rect.top()), QPointF(rect.right(), rect.top())),
+            (QPointF(rect.right(), rect.top()), QPointF(rect.right(), rect.bottom())),
+            (QPointF(rect.right(), rect.bottom()), QPointF(rect.left(), rect.bottom())),
+            (QPointF(rect.left(), rect.bottom()), QPointF(rect.left(), rect.top()))
+        ]
+        
+        for p1, p2 in lines:
+            if self._segments_intersect(start, end, p1, p2):
+                return True
+        
+        return False
+
+    def _segments_intersect(self, a1, a2, b1, b2):
+        """Verifica se dois segmentos de linha se intersectam"""
+        def ccw(A, B, C):
+            return (C.y() - A.y()) * (B.x() - A.x()) > (B.y() - A.y()) * (C.x() - A.x())
+        
+        return ccw(a1, b1, b2) != ccw(a2, b1, b2) and ccw(a1, a2, b1) != ccw(a1, a2, b2)
+
+    def _create_smooth_connection(self, start, end):
+        """Cria uma conexão suave direta entre dois pontos"""
+        path = QPainterPath()
+        path.moveTo(start)
+        
+        dx = end.x() - start.x()
+        dy = end.y() - start.y()
+        distance = math.sqrt(dx*dx + dy*dy)
+        
+        if distance < 30:
+            path.lineTo(end)
+        else:
+            # Curva suave com ponto de controle
+            curvature = min(distance * 0.2, 40)
+            perp_x = -dy / distance if distance > 0 else 0
+            perp_y = dx / distance if distance > 0 else 0
+            
+            mid = QPointF((start.x() + end.x()) / 2, (start.y() + end.y()) / 2)
+            control = QPointF(
+                mid.x() + perp_x * curvature,
+                mid.y() + perp_y * curvature
+            )
+            path.quadTo(control, end)
+        
+        self.setPath(path)
+
+    def _create_orthogonal_route(self, start, end, obstacles):
+        """Cria rota ortogonal que desvia dos obstáculos"""
+        if not obstacles:
+            self._create_smooth_connection(start, end)
+            return
+        
+        # Verificar se há obstáculos na linha direta
+        has_obstacle_on_direct = False
+        for rect in obstacles:
+            if self._line_intersects_rect_fast(start, end, rect):
+                has_obstacle_on_direct = True
+                break
+        
+        if not has_obstacle_on_direct:
+            self._create_smooth_connection(start, end)
+            return
+        
+        # Calcular rota ortogonal com desvio
+        dx = abs(end.x() - start.x())
+        dy = abs(end.y() - start.y())
+        
+        points = [start]
+        
+        # Encontrar o melhor lado para desviar (acima ou abaixo dos obstáculos)
+        detour_y = self._find_best_detour_y(start, end, obstacles)
+        
+        if dx > dy or dy == 0:
+            # Movimento predominante horizontal ou horizontal puro
+            # Rota: start -> (x intermediário, y original) -> (x intermediário, y desvio) -> (x intermediário, y final) -> end
+            mid_x = (start.x() + end.x()) / 2
+            
+            # Ponto 1: Saída horizontal do start
+            exit_x = start.x() + min(dx * 0.3, 100)
+            p1 = QPointF(exit_x, start.y())
+            points.append(p1)
+            
+            # Ponto 2: Subir/descer para o desvio
+            p2 = QPointF(exit_x, detour_y)
+            points.append(p2)
+            
+            # Ponto 3: Travessia horizontal no nível do desvio
+            entry_x = end.x() - min(dx * 0.3, 100)
+            p3 = QPointF(entry_x, detour_y)
+            points.append(p3)
+            
+            # Ponto 4: Descer/subir para o nível final
+            p4 = QPointF(entry_x, end.y())
+            points.append(p4)
+        else:
+            # Movimento predominante vertical
+            # Rota similar mas invertida
+            mid_y = (start.y() + end.y()) / 2
+            
+            exit_y = start.y() + min(dy * 0.3, 100)
+            p1 = QPointF(start.x(), exit_y)
+            points.append(p1)
+            
+            detour_x = self._find_best_detour_x(start, end, obstacles)
+            p2 = QPointF(detour_x, exit_y)
+            points.append(p2)
+            
+            entry_y = end.y() - min(dy * 0.3, 100)
+            p3 = QPointF(detour_x, entry_y)
+            points.append(p3)
+            
+            p4 = QPointF(end.x(), entry_y)
+            points.append(p4)
+        
+        points.append(end)
+        
+        # Criar caminho suave pelos pontos
+        self._create_smooth_path_through_points(points)
+
+    def _find_best_detour_y(self, start, end, obstacles):
+        """Encontra o melhor Y para desviar dos obstáculos (acima ou abaixo)"""
+        # Calcular limites dos obstáculos
+        min_y = float('inf')
+        max_y = float('-inf')
+        
+        for rect in obstacles:
+            min_y = min(min_y, rect.top())
+            max_y = max(max_y, rect.bottom())
+        
+        # Distâncias para desviar por cima ou por baixo
+        margin = 30
+        detour_above = min_y - margin
+        detour_below = max_y + margin
+        
+        # Escolher o lado que está mais longe da linha atual
+        current_y = (start.y() + end.y()) / 2
+        dist_above = abs(detour_above - current_y)
+        dist_below = abs(detour_below - current_y)
+        
+        if dist_above > dist_below:
+            return detour_above
+        else:
+            return detour_below
+
+    def _find_best_detour_x(self, start, end, obstacles):
+        """Encontra o melhor X para desviar dos obstáculos (esquerda ou direita)"""
+        min_x = float('inf')
+        max_x = float('-inf')
+        
+        for rect in obstacles:
+            min_x = min(min_x, rect.left())
+            max_x = max(max_x, rect.right())
+        
+        margin = 30
+        detour_left = min_x - margin
+        detour_right = max_x + margin
+        
+        current_x = (start.x() + end.x()) / 2
+        dist_left = abs(detour_left - current_x)
+        dist_right = abs(detour_right - current_x)
+        
+        if dist_left > dist_right:
+            return detour_left
+        else:
+            return detour_right
+
+    def _point_in_obstacles(self, point, obstacles):
+        """Verifica se um ponto está dentro de algum obstáculo"""
+        for rect in obstacles:
+            if rect.contains(point):
+                return True
+        return False
+
+    def _create_smooth_path_through_points(self, points):
+        """Cria caminho suave através de múltiplos pontos"""
+        if len(points) < 2:
+            return
+        
+        if len(points) == 2:
+            self._create_smooth_connection(points[0], points[1])
+            return
+        
+        path = QPainterPath()
+        path.moveTo(points[0])
+        
+        # Criar curvas suaves entre segmentos
+        for i in range(len(points) - 1):
+            curr = points[i]
+            next_p = points[i + 1]
+            
+            if i == 0:
+                # Primeiro segmento
+                self._add_smooth_segment(path, curr, next_p, True, False)
+            elif i == len(points) - 2:
+                # Último segmento
+                self._add_smooth_segment(path, curr, next_p, False, True)
+            else:
+                # Segmentos do meio
+                self._add_smooth_segment(path, curr, next_p, False, False)
+        
+        self.setPath(path)
+
+    def _add_smooth_segment(self, path, start, end, is_first, is_last):
+        """Adiciona segmento suave ao caminho"""
+        dx = end.x() - start.x()
+        dy = end.y() - start.y()
+        distance = math.sqrt(dx*dx + dy*dy)
+        
+        if distance < 20:
+            path.lineTo(end)
+            return
+        
+        # Suavizar as curvas nas conexões
+        if is_first or is_last:
+            # Curvas mais suaves nas extremidades
+            curvature = min(distance * 0.3, 30)
+        else:
+            curvature = min(distance * 0.2, 20)
+        
+        # Vetor perpendicular
+        perp_x = -dy / distance if distance > 0 else 0
+        perp_y = dx / distance if distance > 0 else 0
+        
+        # Ponto de controle
+        mid = QPointF((start.x() + end.x()) / 2, (start.y() + end.y()) / 2)
+        control = QPointF(
+            mid.x() + perp_x * curvature,
+            mid.y() + perp_y * curvature
+        )
+        
+        path.quadTo(control, end)
 
     def _update_path_advanced(self, start, end):
         """Sistema avançado com Shapely para detecção e scipy para curvas"""
@@ -871,7 +1169,8 @@ class SmartConnection(QGraphicsPathItem):
 
     def paint(self, painter, option, widget):
         painter.setRenderHint(QPainter.Antialiasing)
-        self.update_path() # Força o ajuste da linha durante o movimento
+        # NÃO chamar update_path() aqui - causa loop infinito
+        # A linha é atualizada apenas quando necessário (movimento de nós)
         
         # Destacar quando selecionado
         if option.state & QStyle.State_Selected:

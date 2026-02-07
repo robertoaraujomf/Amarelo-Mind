@@ -122,7 +122,11 @@ class PersistenceManager:
             self.nodes_map = {}
             
             # Reconstruir nós primeiro
-            for node_data in data.get("nodes", []):
+            nodes_list = data.get("nodes", [])
+            print(f"DEBUG: Carregando {len(nodes_list)} nós")
+            
+            for node_data in nodes_list:
+                print(f"DEBUG: Criando nó ID {node_data.get('id')} em ({node_data.get('x')}, {node_data.get('y')})")
                 node = StyledNode(
                     node_data["x"],
                     node_data["y"],
@@ -154,15 +158,22 @@ class PersistenceManager:
                     node.text.selectionChanged.connect(window.update_button_states)
             
             # Reconstruir conexões
-            for conn_data in data.get("connections", []):
+            connections_list = data.get("connections", [])
+            print(f"DEBUG: Carregando {len(connections_list)} conexões")
+            
+            for conn_data in connections_list:
                 source_id = conn_data.get("source_id")
                 target_id = conn_data.get("target_id")
+                print(f"DEBUG: Conectando {source_id} -> {target_id}")
                 
                 if source_id in self.nodes_map and target_id in self.nodes_map:
                     source = self.nodes_map[source_id]
                     target = self.nodes_map[target_id]
                     connection = SmartConnection(source, target)
                     scene.addItem(connection)
+                    print(f"DEBUG: Conexão criada com sucesso")
+                else:
+                    print(f"DEBUG: ERRO - Nós não encontrados: {source_id}, {target_id}")
             
             return True
         except Exception as e:
