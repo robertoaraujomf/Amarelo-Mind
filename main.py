@@ -25,7 +25,6 @@ from core.item_filter import ItemFilter
 IconManager.set_icons_base(BASE_DIR)
 
 from items.shapes import StyledNode, Handle
-from items.node_styles import NODE_STATE
 from items.group_item import GroupNode
 from core.connection import SmartConnection
 from items.alignment_guides import AlignmentGuidesManager
@@ -550,14 +549,6 @@ class AmareloMainWindow(QMainWindow):
         tb.setIconSize(QSize(40, 40))
         tb.setToolButtonStyle(Qt.ToolButtonIconOnly)
         self.addToolBar(tb)
-
-        # Shortcuts for node styles (1-9)
-        for name, idx in NODE_STATE.items():
-            if idx > 0 and idx <= 9:
-                act = QAction(self)
-                act.setShortcut(f"{idx}")
-                act.triggered.connect(lambda checked=False, n=name: self.set_node_style(n))
-                self.addAction(act)
 
         def make_action(icon, tooltip, slot, shortcut=None):
             act = QAction(IconManager.load_icon(icon, icon[0]), "", self)
