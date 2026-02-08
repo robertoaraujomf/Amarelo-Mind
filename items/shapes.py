@@ -4,7 +4,7 @@ from PySide6.QtWidgets import (
 )
 from PySide6.QtCore import Qt, QRectF, QPointF, QObject, Signal
 from PySide6.QtGui import (
-    QColor, QBrush, QLinearGradient, QFont, QPen, QPainter, QTextCursor
+    QColor, QBrush, QLinearGradient, QFont, QPen, QPainter, QTextCursor, QTextOption
 )
 from .node_styles import NODE_COLORS, NODE_STATE
 
@@ -151,6 +151,11 @@ class StyledNode(QGraphicsRectItem):
             self.text.setDefaultTextColor(Qt.black)
         self.text.setFont(QFont("Segoe UI", 11))
         self.text.setTextInteractionFlags(Qt.TextEditorInteraction)
+        
+        # Configurar alinhamento justificado
+        text_option = QTextOption()
+        text_option.setAlignment(Qt.AlignJustify)
+        self.text.document().setDefaultTextOption(text_option)
 
         self.text.document().contentsChanged.connect(self._adjust_rect_to_text)
         self._center_text_vertical()
@@ -170,8 +175,15 @@ class StyledNode(QGraphicsRectItem):
         """Centraliza o texto verticalmente no objeto"""
         r = self.rect()
         
-        # Forçar atualização do layout do texto
+        # Salvar a largura atual do texto
+        current_text_width = self.text.textWidth()
+        
+        # Forçar atualização do layout do texto (altura)
         self.text.adjustSize()
+        
+        # Se tinhamos uma largura definida, restaurá-la
+        if current_text_width > 0:
+            self.text.setTextWidth(current_text_width)
         
         # Obter dimensões reais do texto
         text_rect = self.text.boundingRect()
@@ -267,8 +279,16 @@ class StyledNode(QGraphicsRectItem):
             new_h = max(MIN_H, local.y())
             super().setRect(0, 0, new_w, new_h)
 
-        self.text.setTextWidth(max(20, self.rect().width() - 20))
+        # Atualizar largura do texto para acompanhar o redimensionamento
+        new_text_width = max(20, self.rect().width() - 20)
+        
+        # Centralizar verticalmente primeiro (vai ajustar o tamanho ao conteúdo)
         self._center_text_vertical()
+        
+        # Depois definir a largura do texto para preencher o objeto
+        self.text.setTextWidth(new_text_width)
+        self.text.document().setTextWidth(new_text_width)
+        
         self._update_handle_positions()
         self._update_media_proxy_geometry()
         self.width = self.rect().width()
