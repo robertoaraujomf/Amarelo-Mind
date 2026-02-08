@@ -256,25 +256,25 @@ class StyledNode(QGraphicsRectItem):
         w, h = r.width(), r.height()
 
         if corner == 'tl':
-            new_w = (px + w) - (px + local.x())
-            new_h = (py + h) - (py + local.y())
-            new_w = max(MIN_W, min(new_w, w))
-            new_h = max(MIN_H, min(new_h, h))
+            # Handle 1: redimensiona à esquerda e para cima
+            new_w = max(MIN_W, (px + w) - (px + local.x()))
+            new_h = max(MIN_H, (py + h) - (py + local.y()))
             self.setPos(px + w - new_w, py + h - new_h)
             super().setRect(0, 0, new_w, new_h)
         elif corner == 'tr':
+            # Handle 2: redimensiona à direita e para cima
             new_w = max(MIN_W, local.x())
-            new_h = (py + h) - (py + local.y())
-            new_h = max(MIN_H, min(new_h, h))
+            new_h = max(MIN_H, (py + h) - (py + local.y()))
             self.setPos(px, py + h - new_h)
             super().setRect(0, 0, new_w, new_h)
         elif corner == 'bl':
-            new_w = (px + w) - (px + local.x())
-            new_w = max(MIN_W, min(new_w, w))
+            # Handle 3: redimensiona à esquerda e para baixo
+            new_w = max(MIN_W, (px + w) - (px + local.x()))
             new_h = max(MIN_H, local.y())
             self.setPos(px + w - new_w, py)
             super().setRect(0, 0, new_w, new_h)
         else:  # br
+            # Handle 4: redimensiona à direita e para baixo
             new_w = max(MIN_W, local.x())
             new_h = max(MIN_H, local.y())
             super().setRect(0, 0, new_w, new_h)
