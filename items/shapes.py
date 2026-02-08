@@ -374,7 +374,7 @@ class StyledNode(QGraphicsRectItem):
         else:
             shadow = QGraphicsDropShadowEffect()
             shadow.setBlurRadius(10)
-            shadow.setOffset(2, 2)
+            shadow.setOffset(6, 6)  # Mesmo offset do padrão
             shadow.setColor(QColor(0, 0, 0, 100))
             self.setGraphicsEffect(shadow)
             self.has_shadow = True
@@ -406,7 +406,7 @@ class StyledNode(QGraphicsRectItem):
         if self.graphicsEffect():
             sh = QGraphicsDropShadowEffect()
             sh.setBlurRadius(10)
-            sh.setOffset(2, 2)
+            sh.setOffset(6, 6)  # Mesmo offset do padrão
             sh.setColor(QColor(0, 0, 0, 100))
             clone.setGraphicsEffect(sh)
             clone.has_shadow = True
