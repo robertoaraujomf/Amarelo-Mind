@@ -220,6 +220,7 @@ class InfiniteCanvas(QGraphicsView):
         - Botão esquerdo: move objeto, seleciona, ou pan (se vazio)
         - Botão direito: seleção retangular
         - Arrasta conexões quando clica nelas
+        - Seleciona texto quando clica na caixa de texto
         """
         # Limpar seleção de texto em todos os itens quando clica fora
         item_clicked = self.itemAt(event.position().toPoint())
@@ -240,6 +241,21 @@ class InfiniteCanvas(QGraphicsView):
         
         # Se clicou em um Handle, sempre deixa o evento passar para o Handle processar
         if isinstance(item_clicked, Handle):
+            super().mousePressEvent(event)
+            return
+        
+        # Verificar se clicou no texto (QGraphicsTextItem) - permitir seleção de texto
+        if isinstance(item_clicked, QGraphicsTextItem):
+            # Se o texto está vazio, garantir que ele receba foco imediatamente
+            parent_node = item_clicked.parentItem()
+            if isinstance(parent_node, StyledNode) and not item_clicked.toPlainText().strip():
+                item_clicked.setTextInteractionFlags(Qt.TextEditorInteraction)
+                item_clicked.setFocus(Qt.MouseFocusReason)
+                # Posicionar cursor no início
+                cursor = item_clicked.textCursor()
+                cursor.movePosition(QTextCursor.Start)
+                item_clicked.setTextCursor(cursor)
+            # Deixar o evento passar para o texto processar (permitir seleção)
             super().mousePressEvent(event)
             return
         
@@ -279,6 +295,19 @@ class InfiniteCanvas(QGraphicsView):
                 # Se não está selecionado e Ctrl não foi pressionado, deseleciona outros
                 if not item_clicked.isSelected() and not (event.modifiers() & Qt.ControlModifier):
                     self.scene().clearSelection()
+                
+                # Se clicou em um StyledNode com texto vazio, focar automaticamente na caixa de texto
+                if isinstance(item_clicked, StyledNode) and not item_clicked.get_text().strip():
+                    item_clicked.text.setTextInteractionFlags(Qt.TextEditorInteraction)
+                    item_clicked.text.setFocus(Qt.MouseFocusReason)
+                    # Posicionar cursor no início
+                    cursor = item_clicked.text.textCursor()
+                    cursor.movePosition(QTextCursor.Start)
+                    item_clicked.text.setTextCursor(cursor)
+                    # Selecionar o nó também
+                    item_clicked.setSelected(True)
+                    event.accept()
+                    return
                 
                 # Registra a posição original para movimento
                 if hasattr(item_clicked, 'setPos'):
@@ -335,7 +364,14 @@ class InfiniteCanvas(QGraphicsView):
             return
         
         # Se está arrastando um item (não apenas clicou, mas realmente está movendo)
+        # Mas NÃO move se o foco estiver em uma caixa de texto (permitir seleção de texto)
         if self._dragging_item and event.buttons() & Qt.LeftButton:
+            # Verificar se há uma caixa de texto com foco
+            focus_item = self.scene().focusItem()
+            if isinstance(focus_item, QGraphicsTextItem):
+                # Texto tem foco, não mover o objeto
+                return
+            
             current_pos = self.mapToScene(event.position().toPoint())
             
             # Verificar se o mouse se moveu o suficiente para considerar um drag
