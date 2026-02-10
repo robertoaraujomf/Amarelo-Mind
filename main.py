@@ -648,6 +648,11 @@ class AmareloMainWindow(QMainWindow):
         self.act_align.triggered.connect(self.toggle_align)
         tb.addAction(self.act_align)
 
+        tb.addSeparator()
+
+        # Botão Procurar
+        self.act_search = make_action("procurar.png", "Procurar (Ctrl+F)", self.show_search_dialog, "Ctrl+F")
+
     # --------------------------------------------------
     # ESTADOS
     # --------------------------------------------------
@@ -1172,10 +1177,95 @@ class AmareloMainWindow(QMainWindow):
             path += ".png"
         image.save(path)
 
+    def show_search_dialog(self):
+        """Abre diálogo de pesquisa e busca no arquivo atual"""
+        from PySide6.QtWidgets import QDialog, QVBoxLayout, QLineEdit, QPushButton, QLabel, QListWidget, QListWidgetItem
+        from PySide6.QtCore import Qt
+        
+        dialog = QDialog(self)
+        dialog.setWindowTitle("Procurar")
+        dialog.setMinimumWidth(400)
+        
+        layout = QVBoxLayout()
+        
+        # Campo de pesquisa
+        search_label = QLabel("Digite o texto para procurar:")
+        layout.addWidget(search_label)
+        
+        search_input = QLineEdit()
+        search_input.setPlaceholderText("Procurar...")
+        layout.addWidget(search_input)
+        
+        # Botão procurar
+        search_btn = QPushButton("Procurar")
+        layout.addWidget(search_btn)
+        
+        # Lista de resultados
+        results_label = QLabel("Resultados:")
+        layout.addWidget(results_label)
+        
+        results_list = QListWidget()
+        layout.addWidget(results_list)
+        
+        # Botão ir para
+        goto_btn = QPushButton("Ir para seleção")
+        goto_btn.setEnabled(False)
+        layout.addWidget(goto_btn)
+        
+        dialog.setLayout(layout)
+        
+        # Função de busca
+        def do_search():
+            results_list.clear()
+            search_text = search_input.text().lower()
+            
+            if not search_text:
+                return
+            
+            # Buscar em todos os nós
+            found = False
+            for item in self.scene.items():
+                if isinstance(item, StyledNode):
+                    text = item.get_text().lower()
+                    if search_text in text:
+                        found = True
+                        # Criar item na lista com preview do texto
+                        preview = item.get_text()[:50] + "..." if len(item.get_text()) > 50 else item.get_text()
+                        list_item = QListWidgetItem(preview)
+                        list_item.setData(Qt.UserRole, item)  # Guardar referência ao objeto
+                        results_list.addItem(list_item)
+            
+            if not found:
+                results_list.addItem("Nenhum resultado encontrado")
+            
+            goto_btn.setEnabled(found)
+        
+        # Conectar sinais
+        search_btn.clicked.connect(do_search)
+        search_input.returnPressed.connect(do_search)
+        
+        def goto_selection():
+            current = results_list.currentItem()
+            if current:
+                item = current.data(Qt.UserRole)
+                if item:
+                    # Centralizar na visualização
+                    self.canvas.centerOn(item)
+                    item.setSelected(True)
+                    dialog.accept()
+        
+        goto_btn.clicked.connect(goto_selection)
+        results_list.itemDoubleClicked.connect(lambda: goto_selection())
+        
+        # Focar no campo de pesquisa
+        search_input.setFocus()
+        
+        dialog.exec()
 
-# ======================================================
-# MAIN
-# ======================================================
+
+ # ======================================================
+ # MAIN
+ # ======================================================
 if __name__ == "__main__":
     app = QApplication(sys.argv)
     
