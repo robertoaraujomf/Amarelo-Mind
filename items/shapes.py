@@ -1,6 +1,6 @@
 from PySide6.QtWidgets import (
     QGraphicsRectItem, QGraphicsTextItem, QApplication, QGraphicsDropShadowEffect,
-    QGraphicsItem, QGraphicsProxyWidget
+    QGraphicsItem, QGraphicsProxyWidget, QStyle
 )
 from PySide6.QtCore import Qt, QRectF, QPointF, QObject, Signal
 from PySide6.QtGui import (
@@ -75,6 +75,19 @@ class SelectionAwareTextItem(QGraphicsTextItem):
             return
         
         super().keyPressEvent(event)
+    
+    def paint(self, painter, option, widget=None):
+        """Oculta as marcas de seleção do texto"""
+        # Desativar a flag de seleção temporariamente
+        old_selected = option.state & QStyle.StateFlag.State_Selected
+        if old_selected:
+            option.state &= ~QStyle.StateFlag.State_Selected
+        
+        super().paint(painter, option, widget)
+        
+        # Restaurar o estado (opcional, para outros usos)
+        if old_selected:
+            option.state |= QStyle.StateFlag.State_Selected
 
 
 class Handle(QGraphicsRectItem):
