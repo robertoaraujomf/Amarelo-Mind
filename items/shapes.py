@@ -297,6 +297,13 @@ class StyledNode(QGraphicsRectItem):
     def itemChange(self, change, value):
         if change == QGraphicsItem.ItemSelectedChange:
             self._set_handles_visible(bool(value))
+            # Quando selecionado, tornar o texto editável
+            if value:
+                self.text.setTextInteractionFlags(Qt.TextEditorInteraction)
+                self.text.setFocus(Qt.MouseFocusReason)
+            else:
+                # Quando desselecionado, remover edição
+                self.text.setTextInteractionFlags(Qt.NoTextInteraction)
         if change == QGraphicsRectItem.ItemPositionChange:
             main = QApplication.activeWindow()
             if hasattr(main, "alinhar_ativo") and main.alinhar_ativo:

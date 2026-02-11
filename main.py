@@ -244,21 +244,6 @@ class InfiniteCanvas(QGraphicsView):
             super().mousePressEvent(event)
             return
         
-        # Verificar se clicou no texto (QGraphicsTextItem) - permitir seleção de texto
-        if isinstance(item_clicked, QGraphicsTextItem):
-            # Se o texto está vazio, garantir que ele receba foco imediatamente
-            parent_node = item_clicked.parentItem()
-            if isinstance(parent_node, StyledNode) and not item_clicked.toPlainText().strip():
-                item_clicked.setTextInteractionFlags(Qt.TextEditorInteraction)
-                item_clicked.setFocus(Qt.MouseFocusReason)
-                # Posicionar cursor no início
-                cursor = item_clicked.textCursor()
-                cursor.movePosition(QTextCursor.Start)
-                item_clicked.setTextCursor(cursor)
-            # Deixar o evento passar para o texto processar (permitir seleção)
-            super().mousePressEvent(event)
-            return
-        
         # BOTÃO DIREITO: Seleção retangular
         if event.button() == Qt.RightButton:
             # Inicia seleção retangular com o botão direito
@@ -295,19 +280,6 @@ class InfiniteCanvas(QGraphicsView):
                 # Se não está selecionado e Ctrl não foi pressionado, deseleciona outros
                 if not item_clicked.isSelected() and not (event.modifiers() & Qt.ControlModifier):
                     self.scene().clearSelection()
-                
-                # Se clicou em um StyledNode com texto vazio, focar automaticamente na caixa de texto
-                if isinstance(item_clicked, StyledNode) and not item_clicked.get_text().strip():
-                    item_clicked.text.setTextInteractionFlags(Qt.TextEditorInteraction)
-                    item_clicked.text.setFocus(Qt.MouseFocusReason)
-                    # Posicionar cursor no início
-                    cursor = item_clicked.text.textCursor()
-                    cursor.movePosition(QTextCursor.Start)
-                    item_clicked.text.setTextCursor(cursor)
-                    # Selecionar o nó também
-                    item_clicked.setSelected(True)
-                    event.accept()
-                    return
                 
                 # Registra a posição original para movimento
                 if hasattr(item_clicked, 'setPos'):
