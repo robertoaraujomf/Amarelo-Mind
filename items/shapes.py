@@ -1,6 +1,6 @@
 from PySide6.QtWidgets import (
     QGraphicsRectItem, QGraphicsTextItem, QApplication, QGraphicsDropShadowEffect,
-    QGraphicsItem, QGraphicsProxyWidget, QStyle
+    QGraphicsItem, QGraphicsProxyWidget
 )
 from PySide6.QtCore import Qt, QRectF, QPointF, QObject, Signal
 from PySide6.QtGui import (
@@ -76,20 +76,6 @@ class SelectionAwareTextItem(QGraphicsTextItem):
         
         super().keyPressEvent(event)
     
-    def paint(self, painter, option, widget=None):
-        """Oculta as marcas de seleção do texto"""
-        # Desativar a flag de seleção temporariamente
-        old_selected = option.state & QStyle.StateFlag.State_Selected
-        if old_selected:
-            option.state &= ~QStyle.StateFlag.State_Selected
-        
-        super().paint(painter, option, widget)
-        
-        # Restaurar o estado (opcional, para outros usos)
-        if old_selected:
-            option.state |= QStyle.StateFlag.State_Selected
-
-
 class Handle(QGraphicsRectItem):
     """Handle de canto para redimensionamento manual"""
     def __init__(self, parent_node, corner):
@@ -310,13 +296,17 @@ class StyledNode(QGraphicsRectItem):
     def itemChange(self, change, value):
         if change == QGraphicsItem.ItemSelectedChange:
             self._set_handles_visible(bool(value))
-            # Quando selecionado, tornar o texto editável
+            # Quando selecionado, tornar o texto editável mas NÃO dar foco automaticamente
             if value:
                 self.text.setTextInteractionFlags(Qt.TextEditorInteraction)
-                self.text.setFocus(Qt.MouseFocusReason)
+                # Limpar qualquer seleção de texto para não aparecer selecionado
+                cursor = self.text.textCursor()
+                cursor.clearSelection()
+                self.text.setTextCursor(cursor)
             else:
-                # Quando desselecionado, remover edição
+                # Quando desselecionado, remover edição e garantir que não está selecionado
                 self.text.setTextInteractionFlags(Qt.NoTextInteraction)
+                self.text.clearFocus()
         if change == QGraphicsRectItem.ItemPositionChange:
             main = QApplication.activeWindow()
             if hasattr(main, "alinhar_ativo") and main.alinhar_ativo:
