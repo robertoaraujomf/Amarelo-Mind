@@ -1225,7 +1225,7 @@ class AmareloMainWindow(QMainWindow):
                     self.scene.clearSelection()
                     
                     # Centralizar na visualização com offset para melhor visibilidade
-                    self.canvas.centerOn(item)
+                    self.view.centerOn(item)
                     
                     # Selecionar o item e garantir que está visível
                     item.setSelected(True)
