@@ -623,7 +623,7 @@ class AmareloMainWindow(QMainWindow):
         tb.addSeparator()
 
         # Botão Procurar
-        self.act_search = make_action("procurar.png", "Procurar (Ctrl+F)", self.show_search_dialog, "Ctrl+F")
+        self.act_search = make_action("lupa.png", "Procurar (Ctrl+F)", self.show_search_dialog, "Ctrl+F")
 
     # --------------------------------------------------
     # ESTADOS
@@ -1221,12 +1221,29 @@ class AmareloMainWindow(QMainWindow):
             if current:
                 item = current.data(Qt.UserRole)
                 if item:
-                    # Centralizar na visualização
+                    # Desselecionar todos os itens primeiro
+                    self.scene.clearSelection()
+                    
+                    # Centralizar na visualização com offset para melhor visibilidade
                     self.canvas.centerOn(item)
+                    
+                    # Selecionar o item e garantir que está visível
                     item.setSelected(True)
-                    dialog.accept()
+                    
+                    # Garantir que o item está na frente
+                    item.setZValue(1000)
+                    
+                    # Agendar para restaurar z-value após um tempo
+                    def restore_z():
+                        if item:
+                            item.setZValue(0)
+                    QTimer.singleShot(2000, restore_z)
+                    
+                    # Manter o diálogo aberto para o usuário ver onde está
+                    # dialog.accept()  # Removido para não fechar o diálogo
         
         goto_btn.clicked.connect(goto_selection)
+        results_list.itemClicked.connect(lambda: goto_selection())  # Single click também navega
         results_list.itemDoubleClicked.connect(lambda: goto_selection())
         
         # Focar no campo de pesquisa
