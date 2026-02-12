@@ -266,29 +266,21 @@ class InfiniteCanvas(QGraphicsView):
                 if parent_node:
                     item_clicked = parent_node
                 
-                # Se não está pressionando Ctrl e há múltiplos itens selecionados,
-                # deselecionar todos exceto o item clicado para mover apenas ele
-                selected_items = self.scene().selectedItems()
-                if not (event.modifiers() & Qt.ControlModifier) and len(selected_items) > 1:
-                    # Verificar se o item clicado está entre os selecionados
-                    if item_clicked in selected_items:
-                        # Deselecionar todos exceto o item clicado
-                        for item in selected_items:
-                            if item != item_clicked:
-                                item.setSelected(False)
-                
                 # Se não está selecionado e Ctrl não foi pressionado, deseleciona outros
+                # (a menos que já haja múltiplos itens selecionados e o item clicado esteja entre eles)
+                selected_items = self.scene().selectedItems()
                 if not item_clicked.isSelected() and not (event.modifiers() & Qt.ControlModifier):
                     self.scene().clearSelection()
+                    item_clicked.setSelected(True)
                 
-                # Registra a posição original para movimento
-                if hasattr(item_clicked, 'setPos'):
-                    self._item_positions[item_clicked] = item_clicked.pos()
+                # Registra a posição original para TODOS os itens selecionados
+                self._item_positions.clear()
+                for item in self.scene().selectedItems():
+                    if hasattr(item, 'setPos'):
+                        self._item_positions[item] = item.pos()
                 
                 # NÃO chama super().mousePressEvent para evitar que o item se mova 
                 # apenas com o clique. O movimento será controlado manualmente no mouseMoveEvent.
-                # Seleciona o item manualmente
-                item_clicked.setSelected(True)
                 self._dragging_item = item_clicked
                 self._drag_start_pos = self.mapToScene(event.position().toPoint())
                 event.accept()
@@ -353,18 +345,19 @@ class InfiniteCanvas(QGraphicsView):
                     return
                 self._is_dragging = True
             
-            # Mover o item selecionado
-            if self._dragging_item.isSelected():
-                delta = current_pos - self._drag_start_pos
-                new_pos = self._item_positions.get(self._dragging_item, self._dragging_item.pos()) + delta
-                self._dragging_item.setPos(new_pos)
-                
-                # Mostrar linhas de alinhamento se estiver ativo
-                main_window = QApplication.activeWindow()
-                if hasattr(main_window, "alinhar_ativo") and main_window.alinhar_ativo:
-                    self.alignment_guides.show_guides(self._dragging_item)
-                else:
-                    self.alignment_guides.clear_guides()
+            # Mover TODOS os itens selecionados
+            delta = current_pos - self._drag_start_pos
+            for item, original_pos in self._item_positions.items():
+                if item.isSelected():
+                    new_pos = original_pos + delta
+                    item.setPos(new_pos)
+            
+            # Mostrar linhas de alinhamento para o item sendo arrastado se estiver ativo
+            main_window = QApplication.activeWindow()
+            if hasattr(main_window, "alinhar_ativo") and main_window.alinhar_ativo:
+                self.alignment_guides.show_guides(self._dragging_item)
+            else:
+                self.alignment_guides.clear_guides()
             return
         
         super().mouseMoveEvent(event)
@@ -380,11 +373,10 @@ class InfiniteCanvas(QGraphicsView):
         
         # Se estava arrastando um item
         if self._dragging_item and event.button() == Qt.LeftButton:
-            # Se não foi um drag real (apenas um clique), garantir que o item não se moveu
+            # Se não foi um drag real (apenas um clique), restaurar posições originais
             if not self._is_dragging:
-                # Restaurar posição original se houver
-                if self._dragging_item in self._item_positions:
-                    self._dragging_item.setPos(self._item_positions[self._dragging_item])
+                for item, original_pos in self._item_positions.items():
+                    item.setPos(original_pos)
             
             # Resetar estado de drag
             self._dragging_item = None
