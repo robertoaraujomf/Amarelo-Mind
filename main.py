@@ -567,13 +567,15 @@ class AmareloMainWindow(QMainWindow):
         tb.addSeparator()
 
         self.act_undo = self.undo_stack.createUndoAction(self, "")
-        self.act_undo.setToolTip("Desfazer")
+        self.act_undo.setToolTip("Desfazer (Ctrl+Z)")
         self.act_undo.setIcon(IconManager.load_icon("Desfazer.png", "D"))
+        self.act_undo.setShortcut("Ctrl+Z")
         tb.addAction(self.act_undo)
 
         self.act_redo = self.undo_stack.createRedoAction(self, "")
-        self.act_redo.setToolTip("Refazer")
+        self.act_redo.setToolTip("Refazer (Ctrl+R)")
         self.act_redo.setIcon(IconManager.load_icon("Refazer.png", "R"))
+        self.act_redo.setShortcut("Ctrl+R")
         tb.addAction(self.act_redo)
 
         tb.addSeparator()
@@ -584,7 +586,6 @@ class AmareloMainWindow(QMainWindow):
         tb.addSeparator()
 
         make_action("Adicionar.png", "Adicionar objeto", self.add_object, "+")
-        self.act_group = make_action("Agrupar.png", "Agrupar", self.toggle_group)
         make_action("Conectar.png", "Conectar", self.connect_nodes, "C")
         make_action("Excluir.png", "Excluir", self.delete_selected, "Delete")
 
@@ -646,7 +647,6 @@ class AmareloMainWindow(QMainWindow):
         self.act_font.setEnabled(can_format)
         self.act_colors.setEnabled(can_format)
         self.act_shadow.setEnabled(has_styled_node and not has_media_selected)
-        self.act_group.setEnabled(len([i for i in sel if isinstance(i, StyledNode)]) > 1)
         self.act_export.setEnabled(has_items)
 
     def insert_media(self):
@@ -757,6 +757,41 @@ class AmareloMainWindow(QMainWindow):
                     item.text.selectionChanged.connect(self.update_button_states)
 
     # --------------------------------------------------
+    # TECLAS DE ATALHO
+    # --------------------------------------------------
+    def keyPressEvent(self, event):
+        """Manipula eventos de teclado para movimento dos objetos selecionados"""
+        selected_items = [item for item in self.scene.selectedItems() if isinstance(item, (StyledNode, MediaItem))]
+        
+        if not selected_items:
+            super().keyPressEvent(event)
+            return
+        
+        # Movimento com setas (10 pixels por vez)
+        delta_x = 0
+        delta_y = 0
+        step = 10
+        
+        if event.key() == Qt.Key_Left:
+            delta_x = -step
+        elif event.key() == Qt.Key_Right:
+            delta_x = step
+        elif event.key() == Qt.Key_Up:
+            delta_y = -step
+        elif event.key() == Qt.Key_Down:
+            delta_y = step
+        else:
+            super().keyPressEvent(event)
+            return
+        
+        # Mover todos os itens selecionados
+        for item in selected_items:
+            new_pos = item.pos() + QPointF(delta_x, delta_y)
+            item.setPos(new_pos)
+        
+        event.accept()
+    
+    # --------------------------------------------------
     # FUNCIONALIDADES
     # --------------------------------------------------
     def new_window(self):
@@ -833,19 +868,6 @@ class AmareloMainWindow(QMainWindow):
                         self.undo_stack.push(RemoveItemCommand(self.scene, conn, "Remover conexão"))
                 # Remover o nó
                 self.undo_stack.push(RemoveItemCommand(self.scene, item, "Remover objeto"))
-
-    def toggle_group(self):
-        sel = self.scene.selectedItems()
-        if not sel:
-            return
-
-        if isinstance(sel[0].parentItem(), GroupNode):
-            group = sel[0].parentItem()
-            group.ungroup()
-            self.undo_stack.push(RemoveItemCommand(self.scene, group, "Desagrupar"))
-        else:
-            group = GroupNode(sel)
-            self.undo_stack.push(AddItemCommand(self.scene, group, "Agrupar", self))
 
     def connect_nodes(self):
         """Conecta ou desconecta objetos selecionados"""
@@ -1143,7 +1165,7 @@ class AmareloMainWindow(QMainWindow):
 
     def show_search_dialog(self):
         """Abre diálogo de pesquisa e busca no arquivo atual"""
-        from PySide6.QtWidgets import QDialog, QVBoxLayout, QLineEdit, QPushButton, QLabel, QListWidget, QListWidgetItem
+        from PySide6.QtWidgets import QDialog, QVBoxLayout, QHBoxLayout, QLineEdit, QPushButton, QLabel, QListWidget, QListWidgetItem
         from PySide6.QtCore import Qt
         
         dialog = QDialog(self)
@@ -1171,72 +1193,127 @@ class AmareloMainWindow(QMainWindow):
         results_list = QListWidget()
         layout.addWidget(results_list)
         
-        # Botão ir para
-        goto_btn = QPushButton("Ir para seleção")
-        goto_btn.setEnabled(False)
-        layout.addWidget(goto_btn)
+        # Contador de resultados
+        counter_label = QLabel("0 de 0 resultados")
+        layout.addWidget(counter_label)
+        
+        # Botões de navegação
+        nav_layout = QHBoxLayout()
+        prev_btn = QPushButton("◀ Anterior")
+        prev_btn.setEnabled(False)
+        nav_layout.addWidget(prev_btn)
+        
+        next_btn = QPushButton("Próximo ▶")
+        next_btn.setEnabled(False)
+        nav_layout.addWidget(next_btn)
+        
+        layout.addLayout(nav_layout)
         
         dialog.setLayout(layout)
         
+        # Variáveis para controle
+        search_results = []
+        current_index = -1
+        
         # Função de busca
         def do_search():
+            nonlocal search_results, current_index
             results_list.clear()
+            search_results.clear()
+            current_index = -1
+            
             search_text = search_input.text().lower()
             
             if not search_text:
+                counter_label.setText("0 de 0 resultados")
+                prev_btn.setEnabled(False)
+                next_btn.setEnabled(False)
                 return
             
             # Buscar em todos os nós
-            found = False
             for item in self.scene.items():
                 if isinstance(item, StyledNode):
                     text = item.get_text().lower()
                     if search_text in text:
-                        found = True
                         # Criar item na lista com preview do texto
                         preview = item.get_text()[:50] + "..." if len(item.get_text()) > 50 else item.get_text()
                         list_item = QListWidgetItem(preview)
                         list_item.setData(Qt.UserRole, item)  # Guardar referência ao objeto
                         results_list.addItem(list_item)
+                        search_results.append(item)
             
-            if not found:
+            # Atualizar contador
+            total = len(search_results)
+            if total > 0:
+                counter_label.setText(f"1 de {total} resultados")
+                current_index = 0
+                results_list.setCurrentRow(0)
+                go_to_result(0)
+                prev_btn.setEnabled(total > 1)
+                next_btn.setEnabled(total > 1)
+            else:
                 results_list.addItem("Nenhum resultado encontrado")
-            
-            goto_btn.setEnabled(found)
+                counter_label.setText("0 de 0 resultados")
+                prev_btn.setEnabled(False)
+                next_btn.setEnabled(False)
+        
+        # Função para ir para um resultado específico
+        def go_to_result(index):
+            nonlocal current_index
+            if 0 <= index < len(search_results):
+                current_index = index
+                item = search_results[index]
+                
+                # Desselecionar todos os itens primeiro
+                self.scene.clearSelection()
+                
+                # Ajustar zoom para focar no item (zoom 100%)
+                self.view.resetTransform()
+                self.view.scale(1.0, 1.0)
+                
+                # Centralizar na visualização
+                self.view.centerOn(item)
+                
+                # Selecionar o item e garantir que está visível
+                item.setSelected(True)
+                
+                # Garantir que o item está na frente
+                item.setZValue(1000)
+                
+                # Agendar para restaurar z-value após um tempo
+                def restore_z():
+                    if item:
+                        item.setZValue(0)
+                QTimer.singleShot(2000, restore_z)
+                
+                # Atualizar lista
+                results_list.setCurrentRow(index)
+                
+                # Atualizar contador
+                counter_label.setText(f"{index + 1} de {len(search_results)} resultados")
+                
+                # Atualizar botões
+                prev_btn.setEnabled(index > 0)
+                next_btn.setEnabled(index < len(search_results) - 1)
+        
+        # Navegação anterior
+        def go_previous():
+            nonlocal current_index
+            if current_index > 0:
+                go_to_result(current_index - 1)
+        
+        # Navegação próximo
+        def go_next():
+            nonlocal current_index
+            if current_index < len(search_results) - 1:
+                go_to_result(current_index + 1)
         
         # Conectar sinais
         search_btn.clicked.connect(do_search)
         search_input.returnPressed.connect(do_search)
-        
-        def goto_selection():
-            current = results_list.currentItem()
-            if current:
-                item = current.data(Qt.UserRole)
-                if item:
-                    # Desselecionar todos os itens primeiro
-                    self.scene.clearSelection()
-                    
-                    # Centralizar na visualização com offset para melhor visibilidade
-                    self.view.centerOn(item)
-                    
-                    # Selecionar o item e garantir que está visível
-                    item.setSelected(True)
-                    
-                    # Garantir que o item está na frente
-                    item.setZValue(1000)
-                    
-                    # Agendar para restaurar z-value após um tempo
-                    def restore_z():
-                        if item:
-                            item.setZValue(0)
-                    QTimer.singleShot(2000, restore_z)
-                    
-                    # Manter o diálogo aberto para o usuário ver onde está
-                    # dialog.accept()  # Removido para não fechar o diálogo
-        
-        goto_btn.clicked.connect(goto_selection)
-        results_list.itemClicked.connect(lambda: goto_selection())  # Single click também navega
-        results_list.itemDoubleClicked.connect(lambda: goto_selection())
+        prev_btn.clicked.connect(go_previous)
+        next_btn.clicked.connect(go_next)
+        results_list.itemClicked.connect(lambda item: go_to_result(results_list.row(item)))
         
         # Focar no campo de pesquisa
         search_input.setFocus()
