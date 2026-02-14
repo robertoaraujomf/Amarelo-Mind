@@ -188,49 +188,7 @@ class MediaImageItem(MediaItem):
             self._set_handles_visible(bool(value))
         return super().itemChange(change, value)
 
-    def contextMenuEvent(self, event):
-        menu = QMenu()
-        act_to_slider = QAction("Transformar em slider AV…", menu)
-        act_add = QAction("Adicionar vídeos/áudios…", menu)
-        menu.addAction(act_to_slider)
-        menu.addAction(act_add)
-        chosen = menu.exec(event.screenPos().toPoint())
-        if not chosen:
-            return
-        filters = "Áudio/Vídeo (*.mp3 *.wav *.ogg *.mp4 *.avi *.mkv *.mov)"
-        paths, _ = QFileDialog.getOpenFileNames(None, "Selecionar AV", "", filters)
-        if not paths:
-            return
-        sources = [self.source] + paths
-        slider = MediaAVSliderItem(sources)
-        slider.setPos(self.pos())
-        self._replace_self(slider, "Transformar AV em slider")
 
-    def contextMenuEvent(self, event):
-        menu = QMenu()
-        act_to_slider = QAction("Transformar em slider…", menu)
-        act_add_more = QAction("Adicionar imagens…", menu)
-        menu.addAction(act_to_slider)
-        menu.addAction(act_add_more)
-        chosen = menu.exec(event.screenPos().toPoint())
-        if not chosen:
-            return
-        filters = "Imagens (*.png *.jpg *.jpeg *.bmp *.gif *.webp)"
-        paths, _ = QFileDialog.getOpenFileNames(None, "Selecionar imagens", "", filters)
-        if not paths:
-            return
-        imgs = []
-        for p in paths:
-            img = QImage(p)
-            if not img.isNull():
-                imgs.append((img, p))
-        if not imgs:
-            return
-        all_images = [self._pix.toImage()] + [im for im, _ in imgs]
-        sources = [self.source] + [s for _, s in imgs]
-        slider = MediaSliderImageItem(all_images, sources)
-        slider.setPos(self.pos())
-        self._replace_self(slider, "Transformar imagem em slider")
 
 # --------------------------------------------------
 # AV SLIDER
@@ -439,43 +397,6 @@ class MediaAVSliderItem(MediaItem):
         if change == QGraphicsItem.ItemSelectedChange:
             self._set_handles_visible(bool(value))
         return super().itemChange(change, value)
-
-    def contextMenuEvent(self, event):
-        menu = QMenu()
-        act_add = QAction("Adicionar vídeos/áudios…", menu)
-        act_remove_current = QAction("Remover faixa atual", menu)
-        act_to_single = QAction("Converter para AV único", menu)
-        menu.addAction(act_add)
-        menu.addAction(act_remove_current)
-        menu.addAction(act_to_single)
-        chosen = menu.exec(event.screenPos().toPoint())
-        if not chosen:
-            return
-        if chosen == act_add:
-            filters = "Áudio/Vídeo (*.mp3 *.wav *.ogg *.mp4 *.avi *.mkv *.mov)"
-            paths, _ = QFileDialog.getOpenFileNames(None, "Selecionar AV", "", filters)
-            if not paths:
-                return
-            new_sources = list(self._sources) + paths
-            slider = MediaAVSliderItem(new_sources)
-            slider.setPos(self.pos())
-            self._replace_self(slider, "Adicionar faixas ao slider AV")
-        elif chosen == act_remove_current:
-            if len(self._sources) <= 1:
-                return
-            new_sources = list(self._sources)
-            del new_sources[self._index]
-            slider = MediaAVSliderItem(new_sources)
-            slider.setPos(self.pos())
-            self._replace_self(slider, "Remover faixa do slider AV")
-        elif chosen == act_to_single:
-            if not self._sources:
-                return
-            src = self._sources[self._index]
-            single = MediaAVItem(src)
-            single.setPos(self.pos())
-            self._replace_self(single, "Converter slider AV para AV único")
-
 
 class MediaAVItem(MediaItem):
     CONTROLS_H = 40
