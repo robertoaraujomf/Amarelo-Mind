@@ -266,12 +266,17 @@ class InfiniteCanvas(QGraphicsView):
                 if parent_node:
                     item_clicked = parent_node
                 
-                # Se não está selecionado e Ctrl não foi pressionado, deseleciona outros
-                # (a menos que já haja múltiplos itens selecionados e o item clicado esteja entre eles)
-                selected_items = self.scene().selectedItems()
-                if not item_clicked.isSelected() and not (event.modifiers() & Qt.ControlModifier):
-                    self.scene().clearSelection()
-                    item_clicked.setSelected(True)
+                # Se Ctrl está pressionado, alternar seleção (adicionar/remover)
+                if event.modifiers() & Qt.ControlModifier:
+                    if item_clicked.isSelected():
+                        item_clicked.setSelected(False)
+                    else:
+                        item_clicked.setSelected(True)
+                else:
+                    # Se não está selecionado, deseleciona outros
+                    if not item_clicked.isSelected():
+                        self.scene().clearSelection()
+                        item_clicked.setSelected(True)
                 
                 # Registra a posição original para TODOS os itens selecionados
                 self._item_positions.clear()
