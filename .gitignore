@@ -15,3 +15,8 @@ __pycache__/
 # Arquivos de log e sistema
 *.log
 .DS_Store
+
+# Build outputs
+dist/
+build/
+remove_background.py

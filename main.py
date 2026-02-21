@@ -5,13 +5,14 @@ import json
 from PySide6.QtWidgets import (
     QApplication, QMainWindow, QGraphicsView, QGraphicsScene,
     QToolBar, QFileDialog, QFrame, QFontDialog, QColorDialog,
-    QMessageBox, QGraphicsTextItem, QDialog, QInputDialog
+    QMessageBox, QGraphicsTextItem, QDialog, QInputDialog,
+    QVBoxLayout, QHBoxLayout, QListWidget, QPushButton
 )
 from PySide6.QtCore import Qt, QSize, QPointF, QRectF, QTimer
 from PySide6.QtGui import (
     QPainter, QColor, QAction, QWheelEvent,
     QUndoStack, QImage, QUndoCommand, QFont,
-    QTextCursor, QTextCharFormat, QPen
+    QTextCursor, QTextCharFormat, QPen, QPixmap
 )
 
 # ======================================================
@@ -142,6 +143,21 @@ class RemoveItemCommand(QUndoCommand):
 
     def undo(self):
         self.scene.addItem(self.item)
+
+
+class PasteTextCommand(QUndoCommand):
+    """Comando para colar texto em um nó"""
+    def __init__(self, node, old_html, new_html, description="Colar texto"):
+        super().__init__(description)
+        self.node = node
+        self.old_html = old_html
+        self.new_html = new_html
+
+    def redo(self):
+        self.node.text.setHtml(self.new_html)
+
+    def undo(self):
+        self.node.text.setHtml(self.old_html)
 
 
 class MoveItemCommand(QUndoCommand):
@@ -585,14 +601,14 @@ class AmareloMainWindow(QMainWindow):
 
         tb.addSeparator()
 
-        make_action("Copiar.png", "Copiar", self.copy_content, "Ctrl+C")
-        make_action("Colar.png", "Colar", self.paste_content, "Ctrl+V")
+        self.act_copy = make_action("Copiar.png", "Copiar", self.copy_content, "Ctrl+C")
+        self.act_paste = make_action("Colar.png", "Colar", self.paste_content, "Ctrl+V")
 
         tb.addSeparator()
 
-        make_action("Adicionar.png", "Adicionar objeto", self.add_object, "+")
-        make_action("Conectar.png", "Conectar", self.connect_nodes, "C")
-        make_action("Excluir.png", "Excluir", self.delete_selected, "Delete")
+        self.act_add = make_action("Adicionar.png", "Adicionar objeto", self.add_object, "+")
+        self.act_connect = make_action("Conectar.png", "Conectar", self.connect_nodes, "C")
+        self.act_delete = make_action("Excluir.png", "Excluir", self.delete_selected, "Delete")
 
         tb.addSeparator()
 
@@ -607,21 +623,10 @@ class AmareloMainWindow(QMainWindow):
 
         tb.addSeparator()
 
-        self.act_align = QAction(
-            IconManager.load_icon("Alinhar.png", "A"),
-            "",
-            self
-        )
-        self.act_align.setToolTip("Alinhar")
-        self.act_align.setCheckable(True)
-        self.act_align.setChecked(True)
-        self.act_align.triggered.connect(self.toggle_align)
-        tb.addAction(self.act_align)
-
         tb.addSeparator()
 
-        # Botão Procurar
-        self.act_search = make_action("lupa.png", "Procurar (Ctrl+F)", self.show_search_dialog, "Ctrl+F")
+        # Botão Localizar
+        self.act_search = make_action("Localizar.png", "Localizar", self.show_search_dialog, "Ctrl+F")
 
     # --------------------------------------------------
     # ESTADOS
@@ -654,7 +659,49 @@ class AmareloMainWindow(QMainWindow):
         self.act_shadow.setEnabled(has_styled_node and not has_media_selected)
         self.act_export.setEnabled(has_items)
 
+        # Botão Copiar: habilitado se há texto com seleção
+        # - Texto com seleção em foco, OU
+        # - Nó selecionado (copia o texto do nó)
+        can_copy = False
+        if focus_item and isinstance(focus_item, QGraphicsTextItem):
+            if focus_item.textCursor().hasSelection():
+                can_copy = True
+        if has_styled_node:
+            can_copy = True
+        self.act_copy.setEnabled(can_copy)
+
+        # Botão Colar: habilitado se há texto no clipboard E (foco em texto OU nó selecionado)
+        clipboard_text = QApplication.clipboard().text()
+        can_paste = bool(clipboard_text) and (is_text_in_node or has_styled_node)
+        self.act_paste.setEnabled(can_paste)
+
+        # Botão Conectar: habilitado se há 2+ objetos selecionados (StyledNode ou MediaItem)
+        connectable_items = [i for i in sel if isinstance(i, (StyledNode, MediaItem))]
+        self.act_connect.setEnabled(len(connectable_items) >= 2)
+
+        # Botão Excluir: habilitado se há 1+ objeto selecionado
+        self.act_delete.setEnabled(has_sel)
+
+        # Botão Localizar: habilitado se há pelo menos um objeto com conteúdo textual
+        can_search = False
+        for item in self.scene.items():
+            if isinstance(item, StyledNode):
+                text = item.get_text()
+                if text and text.strip():
+                    can_search = True
+                    break
+            elif isinstance(item, MediaSliderImageItem):
+                if hasattr(item, '_entries') and len(item._entries) > 0:
+                    can_search = True
+                    break
+        self.act_search.setEnabled(can_search)
+
     def insert_media(self):
+        sel = [i for i in self.scene.selectedItems() if isinstance(i, (MediaSliderImageItem, MediaAVSliderItem))]
+        if sel:
+            self._edit_media_playlist(sel[0])
+            return
+        
         choice = QMessageBox(self)
         choice.setWindowTitle("Inserir mídia")
         choice.setText("Escolha a origem da mídia")
@@ -728,19 +775,34 @@ class AmareloMainWindow(QMainWindow):
                 return
             urls = [u.strip() for u in text.splitlines() if u.strip()]
             img_pairs = []
+            video_urls = []
             for u in urls:
-                try:
-                    with urllib.request.urlopen(u) as resp:
-                        data = resp.read()
-                    img = QImage()
-                    img.loadFromData(data)
-                    if not img.isNull():
-                        img_pairs.append((img, u))
-                    else:
-                        # Áudio/Vídeo por URL ainda não implementados
+                u_lower = u.lower()
+                if any(ext in u_lower for ext in ['.mp4', '.avi', '.mkv', '.mov', '.mp3', '.wav', '.ogg', 'youtube.com', 'youtu.be', 'vimeo.com']):
+                    video_urls.append(u)
+                else:
+                    try:
+                        with urllib.request.urlopen(u) as resp:
+                            data = resp.read()
+                        img = QImage()
+                        img.loadFromData(data)
+                        if not img.isNull():
+                            img_pairs.append((img, u))
+                    except Exception:
                         pass
-                except Exception:
-                    pass
+            
+            if video_urls:
+                if len(video_urls) == 1:
+                    item = MediaAVItem(video_urls[0])
+                    item.setPos(base_pos)
+                    self.undo_stack.push(AddItemCommand(self.scene, item, "Adicionar vídeo", self))
+                else:
+                    slider = MediaAVSliderItem(video_urls)
+                    slider.setPos(base_pos)
+                    self.undo_stack.push(AddItemCommand(self.scene, slider, "Adicionar slider de vídeos", self))
+                if not img_pairs:
+                    return
+            
             if not img_pairs:
                 return
             if len(img_pairs) == 1:
@@ -753,6 +815,158 @@ class AmareloMainWindow(QMainWindow):
                 slider = MediaSliderImageItem(imgs, [s for _, s in img_pairs])
                 slider.setPos(base_pos)
                 self.undo_stack.push(AddItemCommand(self.scene, slider, "Adicionar slider de imagens", self))
+
+    def _edit_media_playlist(self, media_item):
+        if isinstance(media_item, MediaSliderImageItem):
+            self._edit_image_slider_playlist(media_item)
+        elif isinstance(media_item, MediaAVSliderItem):
+            self._edit_av_slider_playlist(media_item)
+
+    def _edit_image_slider_playlist(self, slider):
+        dialog = QDialog(self)
+        dialog.setWindowTitle("Editar Playlist de Imagens")
+        dialog.setMinimumSize(500, 400)
+        layout = QVBoxLayout(dialog)
+
+        list_widget = QListWidget()
+        if hasattr(slider, '_entries') and slider._entries:
+            for entry in slider._entries:
+                if hasattr(entry, 'get') and 'source' in entry:
+                    list_widget.addItem(entry['source'])
+                else:
+                    list_widget.addItem(f"Imagem {list_widget.count() + 1}")
+        layout.addWidget(list_widget)
+
+        btn_layout = QHBoxLayout()
+        add_btn = QPushButton("Adicionar")
+        remove_btn = QPushButton("Remover")
+        up_btn = QPushButton("↑ Mover para Cima")
+        down_btn = QPushButton("↓ Mover para Baixo")
+        btn_layout.addWidget(add_btn)
+        btn_layout.addWidget(remove_btn)
+        btn_layout.addWidget(up_btn)
+        btn_layout.addWidget(down_btn)
+        layout.addLayout(btn_layout)
+
+        close_btn = QPushButton("Fechar")
+        layout.addWidget(close_btn)
+
+        def add_images():
+            filters = "Imagens (*.png *.jpg *.jpeg *.bmp *.gif *.webp);;Todos (*.*)"
+            paths, _ = QFileDialog.getOpenFileNames(self, "Selecionar imagens", "", filters)
+            if not paths:
+                return
+            for p in paths:
+                img = QImage(p)
+                if not img.isNull():
+                    pix = QPixmap.fromImage(img)
+                    slider._entries.append({"pix": pix, "source": p, "movie": None})
+                    list_widget.addItem(p)
+            slider._update_label()
+            slider.update()
+
+        def remove_selected():
+            row = list_widget.currentRow()
+            if row >= 0 and row < len(slider._entries):
+                slider._entries.pop(row)
+                list_widget.takeItem(row)
+                slider._update_label()
+                slider.update()
+
+        def move_up():
+            row = list_widget.currentRow()
+            if row > 0:
+                slider._entries[row], slider._entries[row-1] = slider._entries[row-1], slider._entries[row]
+                item = list_widget.takeItem(row)
+                list_widget.insertItem(row-1, item)
+                list_widget.setCurrentRow(row-1)
+                slider.update()
+
+        def move_down():
+            row = list_widget.currentRow()
+            if row >= 0 and row < len(slider._entries) - 1:
+                slider._entries[row], slider._entries[row+1] = slider._entries[row+1], slider._entries[row]
+                item = list_widget.takeItem(row)
+                list_widget.insertItem(row+1, item)
+                list_widget.setCurrentRow(row+1)
+                slider.update()
+
+        add_btn.clicked.connect(add_images)
+        remove_btn.clicked.connect(remove_selected)
+        up_btn.clicked.connect(move_up)
+        down_btn.clicked.connect(move_down)
+        close_btn.clicked.connect(dialog.accept)
+
+        dialog.exec()
+
+    def _edit_av_slider_playlist(self, slider):
+        dialog = QDialog(self)
+        dialog.setWindowTitle("Editar Playlist de Vídeos/Áudio")
+        dialog.setMinimumSize(500, 400)
+        layout = QVBoxLayout(dialog)
+
+        list_widget = QListWidget()
+        if hasattr(slider, '_sources') and slider._sources:
+            for src in slider._sources:
+                list_widget.addItem(src)
+        layout.addWidget(list_widget)
+
+        btn_layout = QHBoxLayout()
+        add_btn = QPushButton("Adicionar")
+        remove_btn = QPushButton("Remover")
+        up_btn = QPushButton("↑ Mover para Cima")
+        down_btn = QPushButton("↓ Mover para Baixo")
+        btn_layout.addWidget(add_btn)
+        btn_layout.addWidget(remove_btn)
+        btn_layout.addWidget(up_btn)
+        btn_layout.addWidget(down_btn)
+        layout.addLayout(btn_layout)
+
+        close_btn = QPushButton("Fechar")
+        layout.addWidget(close_btn)
+
+        def add_videos():
+            filters = "Vídeo (*.mp4 *.avi *.mkv *.mov);;Áudio (*.mp3 *.wav *.ogg);;Todos (*.*)"
+            paths, _ = QFileDialog.getOpenFileNames(self, "Selecionar vídeos/áudio", "", filters)
+            if not paths:
+                return
+            for p in paths:
+                slider._sources.append(p)
+                list_widget.addItem(p)
+            slider._load_current()
+
+        def remove_selected():
+            row = list_widget.currentRow()
+            if row >= 0 and row < len(slider._sources):
+                slider._sources.pop(row)
+                list_widget.takeItem(row)
+                slider._load_current()
+
+        def move_up():
+            row = list_widget.currentRow()
+            if row > 0:
+                slider._sources[row], slider._sources[row-1] = slider._sources[row-1], slider._sources[row]
+                item = list_widget.takeItem(row)
+                list_widget.insertItem(row-1, item)
+                list_widget.setCurrentRow(row-1)
+                slider._load_current()
+
+        def move_down():
+            row = list_widget.currentRow()
+            if row >= 0 and row < len(slider._sources) - 1:
+                slider._sources[row], slider._sources[row+1] = slider._sources[row+1], slider._sources[row]
+                item = list_widget.takeItem(row)
+                list_widget.insertItem(row+1, item)
+                list_widget.setCurrentRow(row+1)
+                slider._load_current()
+
+        add_btn.clicked.connect(add_videos)
+        remove_btn.clicked.connect(remove_selected)
+        up_btn.clicked.connect(move_up)
+        down_btn.clicked.connect(move_down)
+        close_btn.clicked.connect(dialog.accept)
+
+        dialog.exec()
 
     def _connect_text_signals(self):
         """Conecta sinais de seleção de texto de todos os StyledNode na cena"""
@@ -932,19 +1146,29 @@ class AmareloMainWindow(QMainWindow):
         # 1. Tenta colar em item de texto em foco
         focus_item = self.scene.focusItem()
         if isinstance(focus_item, QGraphicsTextItem):
-            cursor = focus_item.textCursor()
-            cursor.insertText(text)
-            focus_item.setTextCursor(cursor)
-            return
+            parent = focus_item.parentItem()
+            if isinstance(parent, StyledNode):
+                old_html = parent.text.toHtml()
+                cursor = focus_item.textCursor()
+                cursor.insertText(text)
+                focus_item.setTextCursor(cursor)
+                new_html = parent.text.toHtml()
+                self.undo_stack.push(PasteTextCommand(parent, old_html, new_html, "Colar texto"))
+                self.update_button_states()
+                return
 
         # 2. Cola no nó selecionado
         sel = [i for i in self.scene.selectedItems() if isinstance(i, StyledNode)]
         if not sel:
             return
         node = sel[0]
+        old_html = node.text.toHtml()
         cursor = node.text.textCursor()
         cursor.insertText(text)
         node.text.setTextCursor(cursor)
+        new_html = node.text.toHtml()
+        self.undo_stack.push(PasteTextCommand(node, old_html, new_html, "Colar texto"))
+        self.update_button_states()
 
     def change_font(self):
         # Determinar o nó alvo
@@ -1071,9 +1295,6 @@ class AmareloMainWindow(QMainWindow):
         for item in self.scene.selectedItems():
             if isinstance(item, StyledNode):
                 item.toggle_shadow()
-
-    def toggle_align(self):
-        self.alinhar_ativo = self.act_align.isChecked()
 
     def _update_window_title(self):
         """Atualiza a barra de título: Amarelo Mind - nome.amind ou Amarelo Mind"""
@@ -1346,3 +1567,6 @@ if __name__ == "__main__":
     window.show()
     
     sys.exit(app.exec())
+    def contextMenuEvent(self, event):
+        # Swallow all context menus to keep a clean UI (no item/context menus)
+        event.accept()

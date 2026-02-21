@@ -186,6 +186,15 @@ class MediaImageItem(MediaItem):
         from PySide6.QtWidgets import QGraphicsItem
         if change == QGraphicsItem.ItemSelectedChange:
             self._set_handles_visible(bool(value))
+        if change == QGraphicsItem.ItemPositionHasChanged:
+            if self.scene():
+                try:
+                    from core.connection import SmartConnection
+                    for item in self.scene().items():
+                        if isinstance(item, SmartConnection) and (item.source == self or item.target == self):
+                            item.update_path()
+                except:
+                    pass
         return super().itemChange(change, value)
 
 
@@ -194,14 +203,15 @@ class MediaImageItem(MediaItem):
 # AV SLIDER
 # --------------------------------------------------
 class MediaAVSliderItem(MediaItem):
-    CONTROLS_H = 40
+    CONTROLS_H = 90
+    PLAYLIST_H = 60
 
     def __init__(self, sources: list[str], parent: QObject = None):
         super().__init__(parent)
         self._sources = list(sources)
         self._index = 0
         self._video_rect = QRectF(0, 0, 360, 200)
-        self._rect = QRectF(0, 0, self._video_rect.width(), self._video_rect.height() + self.CONTROLS_H)
+        self._rect = QRectF(0, 0, self._video_rect.width(), self._video_rect.height() + self.CONTROLS_H + self.PLAYLIST_H)
 
         self.setFlag(QGraphicsObject.ItemIsSelectable, True)
         self.setFlag(QGraphicsObject.ItemIsMovable, True)
@@ -266,6 +276,20 @@ class MediaAVSliderItem(MediaItem):
             vlay.addLayout(time_lay)
         except Exception:
             pass
+        
+        # Playlist row - lista de vídeos
+        playlist_row = QWidget()
+        phlay = QHBoxLayout(playlist_row)
+        phlay.setContentsMargins(0, 0, 0, 0)
+        self._playlist_buttons = []
+        for idx, src in enumerate(self._sources):
+            btn = QPushButton(str(idx + 1))
+            btn.setFixedSize(30, 25)
+            btn.clicked.connect(lambda checked, i=idx: self._go_to_index(i))
+            self._playlist_buttons.append(btn)
+            phlay.addWidget(btn)
+        phlay.addStretch()
+        vlay.addWidget(playlist_row)
 
         container = QWidget()
         container_lay = QVBoxLayout(container)
@@ -313,10 +337,29 @@ class MediaAVSliderItem(MediaItem):
             return
         try:
             from PySide6.QtCore import QUrl
-            self._player.setSource(QUrl.fromLocalFile(self._sources[self._index]))
+            source_str = str(self._sources[self._index])
+            if source_str.startswith('http://') or source_str.startswith('https://'):
+                self._player.setSource(QUrl(source_str))
+            else:
+                self._player.setSource(QUrl.fromLocalFile(source_str))
             self._label.setText(f"{self._index+1}/{len(self._sources)}")
         except Exception:
             pass
+
+    def _go_to_index(self, idx):
+        if 0 <= idx < len(self._sources):
+            self._index = idx
+            self._load_current()
+            self._player.play()
+            self._update_playlist_buttons()
+
+    def _update_playlist_buttons(self):
+        if hasattr(self, '_playlist_buttons'):
+            for idx, btn in enumerate(self._playlist_buttons):
+                if idx == self._index:
+                    btn.setStyleSheet("background-color: #0078d4; color: white;")
+                else:
+                    btn.setStyleSheet("")
 
     def _prev(self):
         if not self._sources:
@@ -324,6 +367,7 @@ class MediaAVSliderItem(MediaItem):
         self._index = (self._index - 1) % len(self._sources)
         self._load_current()
         self._player.play()
+        self._update_playlist_buttons()
 
     def _next(self):
         if not self._sources:
@@ -331,6 +375,7 @@ class MediaAVSliderItem(MediaItem):
         self._index = (self._index + 1) % len(self._sources)
         self._load_current()
         self._player.play()
+        self._update_playlist_buttons()
 
     def boundingRect(self) -> QRectF:
         return self._rect
@@ -389,13 +434,22 @@ class MediaAVSliderItem(MediaItem):
             new_h = max(MIN_H, local.y())
             self._video_rect = QRectF(0, 0, new_w, new_h)
 
-        self._rect = QRectF(0, 0, self._video_rect.width(), self._video_rect.height() + self.CONTROLS_H)
+        self._rect = QRectF(0, 0, self._video_rect.width(), self._video_rect.height() + self.CONTROLS_H + self.PLAYLIST_H)
         self._update_handle_positions()
 
     def itemChange(self, change, value):
         from PySide6.QtWidgets import QGraphicsItem
         if change == QGraphicsItem.ItemSelectedChange:
             self._set_handles_visible(bool(value))
+        if change == QGraphicsItem.ItemPositionHasChanged:
+            if self.scene():
+                try:
+                    from core.connection import SmartConnection
+                    for item in self.scene().items():
+                        if isinstance(item, SmartConnection) and (item.source == self or item.target == self):
+                            item.update_path()
+                except:
+                    pass
         return super().itemChange(change, value)
 
 class MediaAVItem(MediaItem):
@@ -482,7 +536,11 @@ class MediaAVItem(MediaItem):
         try:
             from PySide6.QtCore import QUrl
             self._player.setVideoOutput(self._video_widget)
-            self._player.setSource(QUrl.fromLocalFile(source))
+            source_str = str(source)
+            if source_str.startswith('http://') or source_str.startswith('https://'):
+                self._player.setSource(QUrl(source_str))
+            else:
+                self._player.setSource(QUrl.fromLocalFile(source_str))
         except Exception:
             pass
 
@@ -561,23 +619,35 @@ class MediaAVItem(MediaItem):
         from PySide6.QtWidgets import QGraphicsItem
         if change == QGraphicsItem.ItemSelectedChange:
             self._set_handles_visible(bool(value))
+        if change == QGraphicsItem.ItemPositionHasChanged:
+            if self.scene():
+                try:
+                    from core.connection import SmartConnection
+                    for item in self.scene().items():
+                        if isinstance(item, SmartConnection) and (item.source == self or item.target == self):
+                            item.update_path()
+                except:
+                    pass
         return super().itemChange(change, value)
 
 
 class MediaSliderImageItem(MediaItem):
-    CONTROLS_H = 36
+    CONTROLS_H = 60
+    PLAYLIST_H = 80
 
     def __init__(self, images: list[QImage], sources: list[str] | None = None, parent: QObject = None):
         super().__init__(parent)
-        self._entries = []  # cada entrada: {"pix": QPixmap, "movie": QMovie|None}
+        self._entries = []  # cada entrada: {"pix": QPixmap, "movie": QMovie|None, "source": str}
         for idx, img in enumerate(images):
             pix = QPixmap.fromImage(img) if not img.isNull() else QPixmap()
             movie = None
+            source = ""
             try:
                 if sources and idx < len(sources):
-                    low = str(sources[idx]).lower()
+                    source = sources[idx]
+                    low = str(source).lower()
                     if low.endswith((".gif", ".webp")):
-                        mv = QMovie(sources[idx])
+                        mv = QMovie(source)
                         if mv.isValid():
                             movie = mv
                             mv.frameChanged.connect(self.update)
@@ -586,18 +656,18 @@ class MediaSliderImageItem(MediaItem):
                                 pix = mv.currentPixmap()
             except Exception:
                 pass
-            self._entries.append({"pix": pix, "movie": movie})
+            self._entries.append({"pix": pix, "movie": movie, "source": source})
 
         if not self._entries:
             dummy = QPixmap(40, 40)
             dummy.fill(Qt.lightGray)
-            self._entries = [{"pix": dummy, "movie": None}]
+            self._entries = [{"pix": dummy, "movie": None, "source": ""}]
         self._index = 0
         first = self._entries[0]["pix"]
         w = max(80, first.width() or 80)
         h = max(60, first.height() or 60)
         self._img_rect = QRectF(0, 0, w, h)
-        self._rect = QRectF(0, 0, w, h + self.CONTROLS_H)
+        self._rect = QRectF(0, 0, w, h + self.CONTROLS_H + self.PLAYLIST_H)
 
         self.setFlag(QGraphicsObject.ItemIsSelectable, True)
         self.setFlag(QGraphicsObject.ItemIsMovable, True)
@@ -623,24 +693,52 @@ class MediaSliderImageItem(MediaItem):
 
     def _build_controls(self) -> QWidget:
         w = QWidget()
-        lay = QHBoxLayout(w)
-        lay.setContentsMargins(6, 4, 6, 4)
+        lay = QVBoxLayout(w)
+        lay.setContentsMargins(4, 4, 4, 4)
+        
+        # Controls row
+        controls_row = QWidget()
+        hlay = QHBoxLayout(controls_row)
+        hlay.setContentsMargins(0, 0, 0, 0)
         prev = QPushButton("◀")
         play = QPushButton("▶")
         pause = QPushButton("⏸")
         nxt = QPushButton("▶")
         self._label = QLabel(f"{self._index+1}/{len(self._entries)}")
         for btn in (prev, play, pause, nxt):
-            btn.setFixedHeight(self.CONTROLS_H - 10)
+            btn.setFixedHeight(20)
         prev.clicked.connect(self._prev)
         play.clicked.connect(self._play)
         pause.clicked.connect(self._pause)
         nxt.clicked.connect(self._next)
-        lay.addWidget(prev)
-        lay.addWidget(play)
-        lay.addWidget(pause)
-        lay.addWidget(nxt)
-        lay.addWidget(self._label)
+        hlay.addWidget(prev)
+        hlay.addWidget(play)
+        hlay.addWidget(pause)
+        hlay.addWidget(nxt)
+        hlay.addWidget(self._label)
+        lay.addWidget(controls_row)
+        
+        # Playlist row - thumbnails
+        playlist_row = QWidget()
+        phlay = QHBoxLayout(playlist_row)
+        phlay.setContentsMargins(0, 0, 0, 0)
+        
+        self._playlist_labels = []
+        for idx, entry in enumerate(self._entries):
+            thumb_label = QLabel()
+            thumb_label.setFixedSize(40, 40)
+            pix = entry["pix"]
+            if not pix.isNull():
+                thumb_label.setPixmap(pix.scaled(40, 40, Qt.KeepAspectRatio, Qt.SmoothTransformation))
+            thumb_label.setStyleSheet("border: 1px solid #ccc;")
+            thumb_label.mousePressEvent = lambda event, i=idx: self._go_to_index(i)
+            self._playlist_labels.append(thumb_label)
+            phlay.addWidget(thumb_label)
+        
+        # Adicionar spacer
+        phlay.addStretch()
+        lay.addWidget(playlist_row)
+        
         return w
 
     def boundingRect(self) -> QRectF:
@@ -662,6 +760,18 @@ class MediaSliderImageItem(MediaItem):
     def _update_label(self):
         if hasattr(self, "_label"):
             self._label.setText(f"{self._index+1}/{len(self._entries)}")
+        if hasattr(self, "_playlist_labels"):
+            for idx, label in enumerate(self._playlist_labels):
+                if idx == self._index:
+                    label.setStyleSheet("border: 2px solid #0078d4;")
+                else:
+                    label.setStyleSheet("border: 1px solid #ccc;")
+
+    def _go_to_index(self, idx):
+        if 0 <= idx < len(self._entries):
+            self._index = idx
+            self._update_label()
+            self.update()
 
     def _prev(self):
         self._index = (self._index - 1) % len(self._entries)
@@ -683,7 +793,7 @@ class MediaSliderImageItem(MediaItem):
         if hasattr(self, "_proxy") and self._proxy is not None:
             self._proxy.setPos(0, self._img_rect.height())
         if hasattr(self, "_controls_widget") and self._controls_widget is not None:
-            self._controls_widget.setFixedHeight(self.CONTROLS_H)
+            self._controls_widget.setFixedHeight(self.CONTROLS_H + self.PLAYLIST_H)
             self._controls_widget.setFixedWidth(int(self._rect.width()))
 
     def _update_handle_positions(self):
@@ -731,11 +841,20 @@ class MediaSliderImageItem(MediaItem):
             new_h = max(MIN_H, local.y())
             self._img_rect = QRectF(0, 0, new_w, new_h)
 
-        self._rect = QRectF(0, 0, self._img_rect.width(), self._img_rect.height() + self.CONTROLS_H)
+        self._rect = QRectF(0, 0, self._img_rect.width(), self._img_rect.height() + self.CONTROLS_H + self.PLAYLIST_H)
         self._update_handle_positions()
 
     def itemChange(self, change, value):
         from PySide6.QtWidgets import QGraphicsItem
         if change == QGraphicsItem.ItemSelectedChange:
             self._set_handles_visible(bool(value))
+        if change == QGraphicsItem.ItemPositionHasChanged:
+            if self.scene():
+                try:
+                    from core.connection import SmartConnection
+                    for item in self.scene().items():
+                        if isinstance(item, SmartConnection) and (item.source == self or item.target == self):
+                            item.update_path()
+                except:
+                    pass
         return super().itemChange(change, value)
