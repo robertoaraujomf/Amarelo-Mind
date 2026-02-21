@@ -2,8 +2,8 @@
 import os
 from PyInstaller.utils.hooks import collect_submodules, collect_data_files
 
-# Project base
-project_dir = os.path.dirname(os.path.abspath(__file__))
+# Project base - use current directory
+project_dir = os.getcwd()
 assets_dir = os.path.join(project_dir, 'assets')
 
 # Hidden imports to ensure Qt plugins are collected
