@@ -216,7 +216,7 @@ class MediaAVSliderItem(MediaItem):
         super().__init__(parent)
         self._sources = list(sources)
         self._index = 0
-        self._video_rect = QRectF(0, 0, 360, 200)
+        self._video_rect = QRectF(0, 0, 320, 180)
         self._rect = QRectF(0, 0, self._video_rect.width(), self._video_rect.height() + self.CONTROLS_H + self.PLAYLIST_H)
 
         self.setFlag(QGraphicsObject.ItemIsSelectable, True)
@@ -235,29 +235,62 @@ class MediaAVSliderItem(MediaItem):
         self._player = QMediaPlayer()
         self._player.setAudioOutput(self._audio)
         self._video_widget = QVideoWidget()
-        self._video_widget.setMinimumHeight(100)
+        self._video_widget.setMinimumSize(320, 180)
+        self._video_widget.setStyleSheet("background-color: #000;")
+        self._video_widget.show()
 
         ctrl = QWidget()
+        ctrl.setAttribute(Qt.WA_TranslucentBackground)
         vlay = QVBoxLayout(ctrl)
         vlay.setContentsMargins(6, 6, 6, 6)
         vlay.setSpacing(4)
-        hlay = QHBoxLayout()
+        
+        # Controls usando QLabel clicável
+        from PySide6.QtWidgets import QHBoxLayout
+        controls_row = QWidget()
+        controls_row.setAttribute(Qt.WA_TranslucentBackground)
+        hlay = QHBoxLayout(controls_row)
         hlay.setContentsMargins(0, 0, 0, 0)
-        btn_prev = QPushButton('◀')
-        btn_play = QPushButton('▶')
-        btn_pause = QPushButton('⏸')
-        btn_stop = QPushButton('⏹')
-        btn_next = QPushButton('⏭')
+        
+        prev = QLabel("◀")
+        prev.setAlignment(Qt.AlignCenter)
+        prev.setStyleSheet("background-color: #ddd; padding: 2px; border-radius: 3px;")
+        prev.setFixedSize(30, 20)
+        prev.setMouseTracking(True)
+        
+        play = QLabel("▶")
+        play.setAlignment(Qt.AlignCenter)
+        play.setStyleSheet("background-color: #ddd; padding: 2px; border-radius: 3px;")
+        play.setFixedSize(30, 20)
+        play.setMouseTracking(True)
+        
+        stop = QLabel("⏹")
+        stop.setAlignment(Qt.AlignCenter)
+        stop.setStyleSheet("background-color: #ddd; padding: 2px; border-radius: 3px;")
+        stop.setFixedSize(30, 20)
+        stop.setMouseTracking(True)
+        
+        nxt = QLabel("⏭")
+        nxt.setAlignment(Qt.AlignCenter)
+        nxt.setStyleSheet("background-color: #ddd; padding: 2px; border-radius: 3px;")
+        nxt.setFixedSize(30, 20)
+        nxt.setMouseTracking(True)
+        
         self._label = QLabel("1/1")
-        for b in (btn_prev, btn_play, btn_pause, btn_stop, btn_next):
-            b.setFixedHeight(self.CONTROLS_H - 12)
-        hlay.addWidget(btn_prev)
-        hlay.addWidget(btn_play)
-        hlay.addWidget(btn_pause)
-        hlay.addWidget(btn_stop)
-        hlay.addWidget(btn_next)
+        self._label.setAlignment(Qt.AlignCenter)
+        
+        # Conectar cliques
+        prev.mousePressEvent = lambda e: self._prev()
+        play.mousePressEvent = lambda e: self._player.play()
+        stop.mousePressEvent = lambda e: self._player.stop()
+        nxt.mousePressEvent = lambda e: self._next()
+        
+        hlay.addWidget(prev)
+        hlay.addWidget(play)
+        hlay.addWidget(stop)
+        hlay.addWidget(nxt)
         hlay.addWidget(self._label)
-        vlay.addLayout(hlay)
+        vlay.addWidget(controls_row)
         # Progresso e volume
         self._progress = QSlider(Qt.Horizontal)
         self._progress.setRange(0, 0)
@@ -285,19 +318,24 @@ class MediaAVSliderItem(MediaItem):
         
         # Playlist row - lista de vídeos
         playlist_row = QWidget()
+        playlist_row.setAttribute(Qt.WA_TranslucentBackground)
         phlay = QHBoxLayout(playlist_row)
         phlay.setContentsMargins(0, 0, 0, 0)
         self._playlist_buttons = []
         for idx, src in enumerate(self._sources):
-            btn = QPushButton(str(idx + 1))
+            btn = QLabel(str(idx + 1))
+            btn.setAlignment(Qt.AlignCenter)
+            btn.setStyleSheet("background-color: #ddd; padding: 2px; border-radius: 3px;")
             btn.setFixedSize(30, 25)
-            btn.clicked.connect(lambda checked, i=idx: self._go_to_index(i))
+            btn.setMouseTracking(True)
+            btn.mousePressEvent = lambda e, i=idx: self._go_to_index(i)
             self._playlist_buttons.append(btn)
             phlay.addWidget(btn)
         phlay.addStretch()
         vlay.addWidget(playlist_row)
 
         container = QWidget()
+        container.setMinimumSize(320, 250)
         container_lay = QVBoxLayout(container)
         container_lay.setContentsMargins(0, 0, 0, 0)
         container_lay.setSpacing(0)
@@ -312,16 +350,19 @@ class MediaAVSliderItem(MediaItem):
         self._update_proxy_geometry()
         self._update_handle_positions()
 
-        btn_play.clicked.connect(self._player.play)
-        btn_pause.clicked.connect(self._player.pause)
-        btn_stop.clicked.connect(self._player.stop)
-        btn_prev.clicked.connect(self._prev)
-        btn_next.clicked.connect(self._next)
         self._player.setVideoOutput(self._video_widget)
+        
+        # Conectar sinais de estado para feedback
+        self._player.playbackStateChanged.connect(self._on_playback_state_changed)
+        self._player.errorOccurred.connect(self._on_error_occurred)
+        
         self._load_current()
         
-        # Install event filter to ensure mouse events reach buttons
-        container.installEventFilter(self)
+        # Garantir que o vídeo widget está visível
+        self._video_widget.show()
+        
+        # Tentar iniciar reprodução automaticamente após um pequeno atraso
+        QTimer.singleShot(500, self._player.play)
         
         # Ligações de progresso/volume
         try:
@@ -344,6 +385,26 @@ class MediaAVSliderItem(MediaItem):
                 self._mute.toggled.connect(self._audio.setMuted)
         except Exception:
             pass
+
+    def _on_playback_state_changed(self, state):
+        """Callback quando o estado de reprodução muda"""
+        from PySide6.QtMultimedia import QMediaPlayer
+        if state == QMediaPlayer.PlaybackState.PlayingState:
+            self._label.setText(f"▶ {self._index+1}/{len(self._sources)}")
+        elif state == QMediaPlayer.PlaybackState.PausedState:
+            self._label.setText(f"⏸ {self._index+1}/{len(self._sources)}")
+        else:
+            self._label.setText(f"{self._index+1}/{len(self._sources)}")
+
+    def _on_error_occurred(self):
+        """Callback quando ocorre um erro"""
+        from PySide6.QtMultimedia import QMediaPlayer
+        error = self._player.error()
+        if error != QMediaPlayer.Error.NoError:
+            error_str = self._player.errorString()
+            self._label.setText(f"Erro!")
+            if hasattr(self, '_label'):
+                self._label.setToolTip(error_str)
 
     def _load_current(self):
         if not self._sources:
@@ -486,34 +547,58 @@ class MediaAVItem(MediaItem):
         }
         self._set_handles_visible(False)
 
-        # Player setup
+        # Player setup - apenas áudio
         self._audio = QAudioOutput()
         self._player = QMediaPlayer()
         self._player.setAudioOutput(self._audio)
+        
+        # Placeholder para vídeo
+        self._video_placeholder = QLabel()
+        self._video_placeholder.setAlignment(Qt.AlignCenter)
+        self._video_placeholder.setStyleSheet("background-color: #222; color: #888; border: 2px solid #444; border-radius: 8px;")
+        self._video_placeholder.setMinimumSize(320, 180)
+        self._video_placeholder.setText("🎬 Vídeo\n(áudio disponível)")
 
-        self._video_widget = QVideoWidget()
-        self._video_widget.setMinimumHeight(100)
-
-        # Controls
+        # Controls usando QLabel clicável
+        from PySide6.QtWidgets import QHBoxLayout as HBoxLay
         ctrl = QWidget()
+        ctrl.setAttribute(Qt.WA_TranslucentBackground)
         vlay = QVBoxLayout(ctrl)
         vlay.setContentsMargins(6, 6, 6, 6)
         vlay.setSpacing(4)
-        hlay = QHBoxLayout()
-        hlay.setContentsMargins(0, 0, 0, 0)
-        btn_prev = QPushButton('◀')
-        btn_play = QPushButton('▶')
-        btn_pause = QPushButton('⏸')
-        btn_stop = QPushButton('⏹')
-        btn_next = QPushButton('⏭')
-        for b in (btn_prev, btn_play, btn_pause, btn_stop, btn_next):
-            b.setFixedHeight(self.CONTROLS_H - 12)
-        hlay.addWidget(btn_prev)
-        hlay.addWidget(btn_play)
-        hlay.addWidget(btn_pause)
-        hlay.addWidget(btn_stop)
-        hlay.addWidget(btn_next)
-        vlay.addLayout(hlay)
+        
+        controls_row = QWidget()
+        controls_row.setAttribute(Qt.WA_TranslucentBackground)
+        hlay = HBoxLay(controls_row)
+        hlay.setContentsMargins(10, 0, 10, 0)
+        
+        prev = QLabel("◀")
+        prev.setAlignment(Qt.AlignCenter)
+        prev.setStyleSheet("background-color: #ddd; padding: 4px; border-radius: 3px; margin: 2px;")
+        prev.setFixedSize(35, 25)
+        prev.setMouseTracking(True)
+        
+        play = QLabel("▶")
+        play.setAlignment(Qt.AlignCenter)
+        play.setStyleSheet("background-color: #ddd; padding: 4px; border-radius: 3px; margin: 2px;")
+        play.setFixedSize(35, 25)
+        play.setMouseTracking(True)
+        
+        stop = QLabel("⏹")
+        stop.setAlignment(Qt.AlignCenter)
+        stop.setStyleSheet("background-color: #ddd; padding: 4px; border-radius: 3px; margin: 2px;")
+        stop.setFixedSize(35, 25)
+        stop.setMouseTracking(True)
+        
+        # Conectar cliques
+        play.mousePressEvent = lambda e: self._player.play()
+        stop.mousePressEvent = lambda e: self._player.stop()
+        
+        hlay.addWidget(prev)
+        hlay.addWidget(play)
+        hlay.addWidget(stop)
+        hlay.addStretch()
+        vlay.addWidget(controls_row)
         # Progresso e volume
         self._progress = QSlider(Qt.Horizontal)
         self._progress.setRange(0, 0)
@@ -529,7 +614,7 @@ class MediaAVItem(MediaItem):
         container_lay = QVBoxLayout(container)
         container_lay.setContentsMargins(0, 0, 0, 0)
         container_lay.setSpacing(0)
-        container_lay.addWidget(self._video_widget, 1)
+        container_lay.addWidget(self._video_placeholder, 1)
         container_lay.addWidget(ctrl, 0)
 
         self._proxy = QGraphicsProxyWidget(self)
@@ -537,18 +622,9 @@ class MediaAVItem(MediaItem):
         self._update_proxy_geometry()
         self._update_handle_positions()
 
-        # Wire controls
-        btn_play.clicked.connect(self._player.play)
-        btn_pause.clicked.connect(self._player.pause)
-        btn_stop.clicked.connect(self._player.stop)
-        # prev/next placeholders (playlist futura)
-        btn_prev.setEnabled(False)
-        btn_next.setEnabled(False)
-
         # Set media source
         try:
             from PySide6.QtCore import QUrl
-            self._player.setVideoOutput(self._video_widget)
             source_str = str(source)
             if source_str.startswith('http://') or source_str.startswith('https://'):
                 self._player.setSource(QUrl(source_str))
