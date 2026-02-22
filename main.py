@@ -6,7 +6,7 @@ from PySide6.QtWidgets import (
     QApplication, QMainWindow, QGraphicsView, QGraphicsScene,
     QToolBar, QFileDialog, QFrame, QFontDialog, QColorDialog,
     QMessageBox, QGraphicsTextItem, QDialog, QInputDialog,
-    QVBoxLayout, QHBoxLayout, QListWidget, QPushButton
+    QVBoxLayout, QHBoxLayout, QListWidget, QPushButton, QLabel
 )
 from PySide6.QtCore import Qt, QSize, QPointF, QRectF, QTimer
 from PySide6.QtGui import (
@@ -174,6 +174,27 @@ class MoveItemCommand(QUndoCommand):
     def undo(self):
         self.item.setPos(self.old_pos)
 
+class ReplaceMediaCommand(QUndoCommand):
+    """Comando para substituir um item de mídia por outro"""
+    def __init__(self, scene, old_item, new_item, description="Substituir mídia"):
+        super().__init__(description)
+        self.scene = scene
+        self.old_item = old_item
+        self.new_item = new_item
+        self.new_item.setPos(old_item.pos())
+
+    def redo(self):
+        if self.old_item.scene():
+            self.scene.removeItem(self.old_item)
+        if not self.new_item.scene():
+            self.scene.addItem(self.new_item)
+
+    def undo(self):
+        if self.new_item.scene():
+            self.scene.removeItem(self.new_item)
+        if not self.old_item.scene():
+            self.scene.addItem(self.old_item)
+
 
 
 # ======================================================
@@ -240,6 +261,12 @@ class InfiniteCanvas(QGraphicsView):
         """
         # Limpar seleção de texto em todos os itens quando clica fora
         item_clicked = self.itemAt(event.position().toPoint())
+        
+        # Se clicou em um QGraphicsProxyWidget (controles de mídia), deixa passar o evento
+        from PySide6.QtWidgets import QGraphicsProxyWidget
+        if isinstance(item_clicked, QGraphicsProxyWidget):
+            super().mousePressEvent(event)
+            return
         
         if not isinstance(item_clicked, (StyledNode, Handle)):
             # Clicou fora de qualquer item útil, limpar seleção de texto
@@ -515,6 +542,27 @@ class AmareloMainWindow(QMainWindow):
         # Filtro de itens
         self.item_filter = ItemFilter(self.scene)
 
+        # Atalhos customizados
+        self.custom_shortcuts = {
+            "Novo": "Ctrl+N",
+            "Abrir": "Ctrl+A",
+            "Salvar": "Ctrl+S",
+            "Exportar": "",
+            "Desfazer": "Ctrl+Z",
+            "Refazer": "Ctrl+R",
+            "Copiar": "Ctrl+C",
+            "Colar": "Ctrl+V",
+            "Adicionar": "+",
+            "Mídia": "",
+            "Conectar": "C",
+            "Excluir": "Delete",
+            "Fonte": "",
+            "Cores": "",
+            "Localizar": "Ctrl+F",
+        }
+        
+        self.load_shortcuts_from_file()
+        
         self.load_styles()
         self.setup_toolbar()
 
@@ -562,6 +610,29 @@ class AmareloMainWindow(QMainWindow):
             with open(qss, "r", encoding="utf-8") as f:
                 self.setStyleSheet(f.read())
 
+    def _get_shortcuts_file(self):
+        return os.path.join(BASE_DIR, "shortcuts.json")
+
+    def load_shortcuts_from_file(self):
+        shortcuts_file = self._get_shortcuts_file()
+        if os.path.exists(shortcuts_file):
+            try:
+                with open(shortcuts_file, "r", encoding="utf-8") as f:
+                    saved = json.load(f)
+                    for key, value in saved.items():
+                        if key in self.custom_shortcuts:
+                            self.custom_shortcuts[key] = value
+            except Exception as e:
+                print(f"Aviso: Não foi carregar atalhos: {e}")
+
+    def save_shortcuts_to_file(self):
+        shortcuts_file = self._get_shortcuts_file()
+        try:
+            with open(shortcuts_file, "w", encoding="utf-8") as f:
+                json.dump(self.custom_shortcuts, f, indent=2, ensure_ascii=False)
+        except Exception as e:
+            print(f"Aviso: Não foi salvar atalhos: {e}")
+
     # --------------------------------------------------
     # TOOLBAR
     # --------------------------------------------------
@@ -571,62 +642,61 @@ class AmareloMainWindow(QMainWindow):
         tb.setToolButtonStyle(Qt.ToolButtonIconOnly)
         self.addToolBar(tb)
 
-        def make_action(icon, tooltip, slot, shortcut=None):
+        def make_action(icon, tooltip, slot, shortcut_key=None):
             act = QAction(IconManager.load_icon(icon, icon[0]), "", self)
             act.setToolTip(tooltip)
+            shortcut = self.custom_shortcuts.get(shortcut_key) if shortcut_key else None
             if shortcut:
                 act.setShortcut(shortcut)
             act.triggered.connect(slot)
             tb.addAction(act)
             return act
 
-        make_action("Novo.png", "Novo mapa mental", self.new_window, "Ctrl+N")
-        make_action("Abrir.png", "Abrir mapa mental", self.open_project, "Ctrl+A")
-        make_action("Salvar.png", "Salvar alterações", self.save_project, "Ctrl+S")
+        self.act_new = make_action("Novo.png", "Novo mapa mental", self.new_window, "Novo")
+        self.act_open = make_action("Abrir.png", "Abrir mapa mental", self.open_project, "Abrir")
+        self.act_save = make_action("Salvar.png", "Salvar alterações", self.save_project, "Salvar")
         self.act_export = make_action("Exportar.png", "Exportar como imagem", self.export_png)
 
         tb.addSeparator()
 
         self.act_undo = self.undo_stack.createUndoAction(self, "")
-        self.act_undo.setToolTip("Desfazer (Ctrl+Z)")
+        self.act_undo.setToolTip(f"Desfazer ({self.custom_shortcuts.get('Desfazer', 'Ctrl+Z')})")
         self.act_undo.setIcon(IconManager.load_icon("Desfazer.png", "D"))
-        self.act_undo.setShortcut("Ctrl+Z")
+        self.act_undo.setShortcut(self.custom_shortcuts.get("Desfazer", "Ctrl+Z"))
         tb.addAction(self.act_undo)
 
         self.act_redo = self.undo_stack.createRedoAction(self, "")
-        self.act_redo.setToolTip("Refazer (Ctrl+R)")
+        self.act_redo.setToolTip(f"Refazer ({self.custom_shortcuts.get('Refazer', 'Ctrl+R')})")
         self.act_redo.setIcon(IconManager.load_icon("Refazer.png", "R"))
-        self.act_redo.setShortcut("Ctrl+R")
+        self.act_redo.setShortcut(self.custom_shortcuts.get("Refazer", "Ctrl+R"))
         tb.addAction(self.act_redo)
 
         tb.addSeparator()
 
-        self.act_copy = make_action("Copiar.png", "Copiar", self.copy_content, "Ctrl+C")
-        self.act_paste = make_action("Colar.png", "Colar", self.paste_content, "Ctrl+V")
+        self.act_copy = make_action("Copiar.png", "Copiar", self.copy_content, "Copiar")
+        self.act_paste = make_action("Colar.png", "Colar", self.paste_content, "Colar")
 
         tb.addSeparator()
 
-        self.act_add = make_action("Adicionar.png", "Adicionar objeto", self.add_object, "+")
-        self.act_connect = make_action("Conectar.png", "Conectar", self.connect_nodes, "C")
-        self.act_delete = make_action("Excluir.png", "Excluir", self.delete_selected, "Delete")
-
-        tb.addSeparator()
-
-        # Botão Midia
+        self.act_add = make_action("Adicionar.png", "Adicionar objeto", self.add_object, "Adicionar")
         self.act_media = make_action("Midia.png", "Mídia", self.insert_media)
+        self.act_connect = make_action("Conectar.png", "Conectar", self.connect_nodes, "Conectar")
+        self.act_delete = make_action("Excluir.png", "Excluir", self.delete_selected, "Excluir")
 
         tb.addSeparator()
 
         self.act_font = make_action("Fonte.png", "Fonte", self.change_font)
         self.act_colors = make_action("Cores.png", "Cores", self.change_colors)
-        self.act_shadow = make_action("Sombra.png", "Sombra", self.toggle_shadow)
 
         tb.addSeparator()
 
         tb.addSeparator()
 
         # Botão Localizar
-        self.act_search = make_action("Localizar.png", "Localizar", self.show_search_dialog, "Ctrl+F")
+        self.act_search = make_action("Localizar.png", "Localizar", self.show_search_dialog, "Localizar")
+
+        # Botão Teclas de Atalho
+        make_action("TecladeAtalho.png", "Teclas de atalho", self.show_shortcuts_dialog)
 
     # --------------------------------------------------
     # ESTADOS
@@ -656,7 +726,6 @@ class AmareloMainWindow(QMainWindow):
 
         self.act_font.setEnabled(can_format)
         self.act_colors.setEnabled(can_format)
-        self.act_shadow.setEnabled(has_styled_node and not has_media_selected)
         self.act_export.setEnabled(has_items)
 
         # Botão Copiar: habilitado se há texto com seleção
@@ -697,7 +766,7 @@ class AmareloMainWindow(QMainWindow):
         self.act_search.setEnabled(can_search)
 
     def insert_media(self):
-        sel = [i for i in self.scene.selectedItems() if isinstance(i, (MediaSliderImageItem, MediaAVSliderItem))]
+        sel = [i for i in self.scene.selectedItems() if isinstance(i, (MediaSliderImageItem, MediaAVSliderItem, MediaImageItem, MediaAVItem))]
         if sel:
             self._edit_media_playlist(sel[0])
             return
@@ -821,6 +890,109 @@ class AmareloMainWindow(QMainWindow):
             self._edit_image_slider_playlist(media_item)
         elif isinstance(media_item, MediaAVSliderItem):
             self._edit_av_slider_playlist(media_item)
+        elif isinstance(media_item, MediaImageItem):
+            self._edit_single_image(media_item)
+        elif isinstance(media_item, MediaAVItem):
+            self._edit_single_av(media_item)
+
+    def _edit_single_image(self, media_item):
+        """Edita uma imagem única - oferece converter para slider"""
+        dialog = QDialog(self)
+        dialog.setWindowTitle("Editar Imagem")
+        dialog.setMinimumSize(400, 200)
+        layout = QVBoxLayout(dialog)
+        
+        label = QLabel(f"Imagem: {media_item.source}")
+        layout.addWidget(label)
+        
+        info = QLabel("Esta é uma imagem única. Deseja adicionar mais imagens para criar um slider?")
+        layout.addWidget(info)
+        
+        btn_layout = QHBoxLayout()
+        add_btn = QPushButton("Adicionar mais imagens")
+        close_btn = QPushButton("Fechar")
+        
+        def add_more_images():
+            filters = "Imagens (*.png *.jpg *.jpeg *.bmp *.gif *.webp);;Todos (*.*)"
+            paths, _ = QFileDialog.getOpenFileNames(self, "Selecionar imagens", "", filters)
+            if not paths:
+                return
+            
+            # Converter para slider
+            images = []
+            for p in paths:
+                img = QImage(p)
+                if not img.isNull():
+                    images.append((img, p))
+            
+            if images:
+                # Adicionar a imagem atual como primeira entrada
+                current_pix = media_item._pix
+                current_source = media_item.source
+                
+                all_images = [media_item._pix] + [img for img, _ in images]
+                all_sources = [media_item.source] + [s for _, s in images]
+                
+                # Criar novo slider
+                slider = MediaSliderImageItem(
+                    [media_item._pix] + [img for img, _ in images],
+                    [media_item.source] + [s for _, s in images]
+                )
+                slider.setPos(media_item.pos())
+                
+                # Substituir o item antigo pelo slider
+                self.undo_stack.push(ReplaceMediaCommand(self.scene, media_item, slider, "Converter para slider"))
+            
+            dialog.accept()
+        
+        add_btn.clicked.connect(add_more_images)
+        btn_layout.addWidget(add_btn)
+        btn_layout.addWidget(close_btn)
+        layout.addLayout(btn_layout)
+        
+        close_btn.clicked.connect(dialog.accept)
+        dialog.exec()
+
+    def _edit_single_av(self, media_item):
+        """Edita um AV único - oferece converter para slider"""
+        dialog = QDialog(self)
+        dialog.setWindowTitle("Editar Vídeo/Áudio")
+        dialog.setMinimumSize(400, 200)
+        layout = QVBoxLayout(dialog)
+        
+        label = QLabel(f"Arquivo: {media_item.source}")
+        layout.addWidget(label)
+        
+        info = QLabel("Este é um arquivo único. Deseja adicionar mais arquivos para criar uma playlist?")
+        layout.addWidget(info)
+        
+        btn_layout = QHBoxLayout()
+        add_btn = QPushButton("Adicionar mais arquivos")
+        close_btn = QPushButton("Fechar")
+        
+        def add_more_files():
+            filters = "Vídeo (*.mp4 *.avi *.mkv *.mov);;Áudio (*.mp3 *.wav *.ogg);;Todos (*.*)"
+            paths, _ = QFileDialog.getOpenFileNames(self, "Selecionar arquivos", "", filters)
+            if not paths:
+                return
+            
+            # Criar slider AV
+            all_sources = [media_item.source] + paths
+            slider = MediaAVSliderItem(all_sources)
+            slider.setPos(media_item.pos())
+            
+            # Substituir o item antigo pelo slider
+            self.undo_stack.push(ReplaceMediaCommand(self.scene, media_item, slider, "Converter para playlist"))
+            
+            dialog.accept()
+        
+        add_btn.clicked.connect(add_more_files)
+        btn_layout.addWidget(add_btn)
+        btn_layout.addWidget(close_btn)
+        layout.addLayout(btn_layout)
+        
+        close_btn.clicked.connect(dialog.accept)
+        dialog.exec()
 
     def _edit_image_slider_playlist(self, slider):
         dialog = QDialog(self)
@@ -863,6 +1035,7 @@ class AmareloMainWindow(QMainWindow):
                     slider._entries.append({"pix": pix, "source": p, "movie": None})
                     list_widget.addItem(p)
             slider._update_label()
+            slider._rebuild_playlist_widget()
             slider.update()
 
         def remove_selected():
@@ -871,6 +1044,7 @@ class AmareloMainWindow(QMainWindow):
                 slider._entries.pop(row)
                 list_widget.takeItem(row)
                 slider._update_label()
+                slider._rebuild_playlist_widget()
                 slider.update()
 
         def move_up():
@@ -880,6 +1054,7 @@ class AmareloMainWindow(QMainWindow):
                 item = list_widget.takeItem(row)
                 list_widget.insertItem(row-1, item)
                 list_widget.setCurrentRow(row-1)
+                slider._rebuild_playlist_widget()
                 slider.update()
 
         def move_down():
@@ -889,6 +1064,7 @@ class AmareloMainWindow(QMainWindow):
                 item = list_widget.takeItem(row)
                 list_widget.insertItem(row+1, item)
                 list_widget.setCurrentRow(row+1)
+                slider._rebuild_playlist_widget()
                 slider.update()
 
         add_btn.clicked.connect(add_images)
@@ -1079,13 +1255,13 @@ class AmareloMainWindow(QMainWindow):
                 if item not in seen_conn:
                     seen_conn.add(item)
                     self.undo_stack.push(RemoveItemCommand(self.scene, item, "Remover conexão"))
-            elif isinstance(item, StyledNode):
+            elif isinstance(item, (StyledNode, MediaItem)):
                 # Remover conexões conectadas ao nó
                 for conn in self.scene.items():
                     if isinstance(conn, SmartConnection) and conn not in seen_conn and (conn.source == item or conn.target == item):
                         seen_conn.add(conn)
                         self.undo_stack.push(RemoveItemCommand(self.scene, conn, "Remover conexão"))
-                # Remover o nó
+                # Remover o nó ou mídia
                 self.undo_stack.push(RemoveItemCommand(self.scene, item, "Remover objeto"))
 
     def connect_nodes(self):
@@ -1543,6 +1719,186 @@ class AmareloMainWindow(QMainWindow):
         
         # Focar no campo de pesquisa
         search_input.setFocus()
+        
+        dialog.exec()
+
+
+    def show_shortcuts_dialog(self):
+        """Abre diálogo para visualizar e editar teclas de atalho"""
+        from PySide6.QtWidgets import (QDialog, QVBoxLayout, QHBoxLayout, QTableWidget, 
+                                       QTableWidgetItem, QPushButton, QLabel, QHeaderView, 
+                                       QMessageBox, QLineEdit)
+        from PySide6.QtCore import Qt, QEvent
+        
+        all_buttons = [
+            "Novo", "Abrir", "Salvar", "Exportar", "Desfazer", "Refazer",
+            "Copiar", "Colar", "Adicionar", "Mídia", "Conectar", "Excluir",
+            "Fonte", "Cores", "Localizar"
+        ]
+        
+        dialog = QDialog(self)
+        dialog.setWindowTitle("Teclas de Atalho")
+        dialog.setMinimumSize(500, 450)
+        
+        layout = QVBoxLayout(dialog)
+        
+        label = QLabel("Selecione uma linha e pressione a combinação de teclas desejada:")
+        layout.addWidget(label)
+        
+        table = QTableWidget()
+        table.setColumnCount(2)
+        table.setHorizontalHeaderLabels(["Botão", "Atalho"])
+        table.horizontalHeader().setSectionResizeMode(0, QHeaderView.Stretch)
+        table.horizontalHeader().setSectionResizeMode(1, QHeaderView.ResizeToContents)
+        table.setRowCount(len(all_buttons))
+        table.setSelectionBehavior(QTableWidget.SelectRows)
+        table.setSelectionMode(QTableWidget.SingleSelection)
+        table.setColumnWidth(1, 150)
+        
+        shortcut_edits = {}
+        
+        for i, name in enumerate(all_buttons):
+            table.setItem(i, 0, QTableWidgetItem(name))
+            
+            shortcut_edit = QLineEdit()
+            shortcut_edit.setReadOnly(True)
+            shortcut_edit.setPlaceholderText("Pressione teclas...")
+            shortcut_edit.setText(self.custom_shortcuts.get(name, ""))
+            shortcut_edit.setMinimumWidth(120)
+            shortcut_edits[name] = shortcut_edit
+            table.setCellWidget(i, 1, shortcut_edit)
+        
+        table.resizeRowsToContents()
+        layout.addWidget(table)
+        
+        info_label = QLabel("Dica: Pressione Escape para limpar. Selecione a linha e digite as teclas.")
+        info_label.setStyleSheet("color: gray; font-style: italic;")
+        layout.addWidget(info_label)
+        
+        btn_layout = QHBoxLayout()
+        
+        selected_row = [0]
+        
+        def handle_key_event(event):
+            row = table.currentRow()
+            if row < 0:
+                return False
+            
+            key = event.key()
+            modifiers = event.modifiers()
+            
+            if key == Qt.Key_Escape:
+                shortcut_edits[all_buttons[row]].setText("")
+                event.accept()
+                return True
+            
+            if key in (Qt.Key_Control, Qt.Key_Shift, Qt.Key_Alt, Qt.Key_Meta, 
+                       Qt.Key_Tab, Qt.Key_Backtab, Qt.Key_Return, Qt.Key_Enter):
+                return False
+            
+            combo = []
+            if modifiers & Qt.ControlModifier:
+                combo.append("Ctrl")
+            if modifiers & Qt.AltModifier:
+                combo.append("Alt")
+            if modifiers & Qt.ShiftModifier:
+                combo.append("Shift")
+            if modifiers & Qt.MetaModifier:
+                combo.append("Meta")
+            
+            key_name = ""
+            if key == Qt.Key_Space:
+                key_name = "Space"
+            elif key == Qt.Key_Return:
+                key_name = "Enter"
+            elif key == Qt.Key_Backspace:
+                key_name = "Backspace"
+            elif key == Qt.Key_Delete:
+                key_name = "Delete"
+            elif key == Qt.Key_Tab:
+                key_name = "Tab"
+            elif Qt.Key_F1 <= key <= Qt.Key_F12:
+                key_name = f"F{key - Qt.Key_F1 + 1}"
+            elif key == Qt.Key_Left:
+                key_name = "Left"
+            elif key == Qt.Key_Right:
+                key_name = "Right"
+            elif key == Qt.Key_Up:
+                key_name = "Up"
+            elif key == Qt.Key_Down:
+                key_name = "Down"
+            else:
+                key_text = event.text()
+                if key_text and key_text.isprintable():
+                    key_name = key_text.upper()
+            
+            if key_name:
+                combo.append(key_name)
+            
+            if combo:
+                shortcut_edits[all_buttons[row]].setText("+".join(combo))
+                event.accept()
+                return True
+            
+            return False
+        
+        dialog.keyPressEvent = handle_key_event
+        
+        def apply_shortcuts():
+            for name, edit in shortcut_edits.items():
+                self.custom_shortcuts[name] = edit.text()
+            
+            self.save_shortcuts_to_file()
+            update_toolbar_shortcuts()
+            QMessageBox.information(dialog, "Sucesso", "Atalhos salvos e atualizados!")
+        
+        def update_toolbar_shortcuts():
+            self.act_new.setShortcut(self.custom_shortcuts.get("Novo", ""))
+            self.act_new.setToolTip(f"Novo ({self.custom_shortcuts.get('Novo', '')})")
+            
+            self.act_open.setShortcut(self.custom_shortcuts.get("Abrir", ""))
+            self.act_open.setToolTip(f"Abrir ({self.custom_shortcuts.get('Abrir', '')})")
+            
+            self.act_save.setShortcut(self.custom_shortcuts.get("Salvar", ""))
+            self.act_save.setToolTip(f"Salvar ({self.custom_shortcuts.get('Salvar', '')})")
+            
+            if hasattr(self, 'act_export'):
+                self.act_export.setShortcut(self.custom_shortcuts.get("Exportar", ""))
+            
+            self.act_undo.setShortcut(self.custom_shortcuts.get("Desfazer", ""))
+            self.act_undo.setToolTip(f"Desfazer ({self.custom_shortcuts.get('Desfazer', '')})")
+            
+            self.act_redo.setShortcut(self.custom_shortcuts.get("Refazer", ""))
+            self.act_redo.setToolTip(f"Refazer ({self.custom_shortcuts.get('Refazer', '')})")
+            
+            self.act_copy.setShortcut(self.custom_shortcuts.get("Copiar", ""))
+            self.act_paste.setShortcut(self.custom_shortcuts.get("Colar", ""))
+            
+            self.act_add.setShortcut(self.custom_shortcuts.get("Adicionar", ""))
+            
+            if hasattr(self, 'act_media'):
+                self.act_media.setShortcut(self.custom_shortcuts.get("Mídia", ""))
+            
+            self.act_connect.setShortcut(self.custom_shortcuts.get("Conectar", ""))
+            self.act_delete.setShortcut(self.custom_shortcuts.get("Excluir", ""))
+            
+            if hasattr(self, 'act_font'):
+                self.act_font.setShortcut(self.custom_shortcuts.get("Fonte", ""))
+            
+            if hasattr(self, 'act_colors'):
+                self.act_colors.setShortcut(self.custom_shortcuts.get("Cores", ""))
+            
+            self.act_search.setShortcut(self.custom_shortcuts.get("Localizar", ""))
+        
+        save_btn = QPushButton("Salvar")
+        save_btn.clicked.connect(apply_shortcuts)
+        
+        close_btn = QPushButton("Fechar")
+        close_btn.clicked.connect(dialog.accept)
+        
+        btn_layout.addWidget(save_btn)
+        btn_layout.addWidget(close_btn)
+        layout.addLayout(btn_layout)
         
         dialog.exec()
 

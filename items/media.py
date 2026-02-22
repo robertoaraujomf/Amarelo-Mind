@@ -1,6 +1,6 @@
-from PySide6.QtWidgets import QGraphicsObject, QWidget, QHBoxLayout, QPushButton, QLabel, QGraphicsProxyWidget, QVBoxLayout, QMenu, QFileDialog, QSlider
-from PySide6.QtCore import QObject
-from PySide6.QtGui import QPixmap, QImage, QPainter, QAction
+from PySide6.QtWidgets import QGraphicsObject, QWidget, QHBoxLayout, QPushButton, QLabel, QGraphicsProxyWidget, QVBoxLayout, QMenu, QFileDialog, QSlider, QGraphicsDropShadowEffect
+from PySide6.QtCore import QObject, QEvent
+from PySide6.QtGui import QPixmap, QImage, QPainter, QAction, QColor
 from PySide6.QtCore import QRectF, Qt, QTimer
 from PySide6.QtGui import QMovie
 from .shapes import Handle
@@ -59,6 +59,12 @@ class ReplaceItemCommand(QUndoCommand):
 class MediaItem(QGraphicsObject):
     def __init__(self, parent: QObject = None):
         super().__init__(parent)
+
+        shadow = QGraphicsDropShadowEffect()
+        shadow.setBlurRadius(10)
+        shadow.setOffset(6, 6)
+        shadow.setColor(QColor(0, 0, 0, 100))
+        self.setGraphicsEffect(shadow)
 
     def boundingRect(self):
         return QRectF(0, 0, 0, 0)
@@ -241,7 +247,7 @@ class MediaAVSliderItem(MediaItem):
         btn_play = QPushButton('▶')
         btn_pause = QPushButton('⏸')
         btn_stop = QPushButton('⏹')
-        btn_next = QPushButton('▶')
+        btn_next = QPushButton('⏭')
         self._label = QLabel("1/1")
         for b in (btn_prev, btn_play, btn_pause, btn_stop, btn_next):
             b.setFixedHeight(self.CONTROLS_H - 12)
@@ -300,6 +306,9 @@ class MediaAVSliderItem(MediaItem):
 
         self._proxy = QGraphicsProxyWidget(self)
         self._proxy.setWidget(container)
+        self._proxy.setAcceptHoverEvents(True)
+        self._proxy.setFlag(QGraphicsProxyWidget.ItemSendsGeometryChanges, True)
+        container.setFocusPolicy(Qt.NoFocus)
         self._update_proxy_geometry()
         self._update_handle_positions()
 
@@ -310,6 +319,10 @@ class MediaAVSliderItem(MediaItem):
         btn_next.clicked.connect(self._next)
         self._player.setVideoOutput(self._video_widget)
         self._load_current()
+        
+        # Install event filter to ensure mouse events reach buttons
+        container.installEventFilter(self)
+        
         # Ligações de progresso/volume
         try:
             self._player.positionChanged.connect(lambda pos: self._progress.setValue(int(pos)))
@@ -492,7 +505,7 @@ class MediaAVItem(MediaItem):
         btn_play = QPushButton('▶')
         btn_pause = QPushButton('⏸')
         btn_stop = QPushButton('⏹')
-        btn_next = QPushButton('▶')
+        btn_next = QPushButton('⏭')
         for b in (btn_prev, btn_play, btn_pause, btn_stop, btn_next):
             b.setFixedHeight(self.CONTROLS_H - 12)
         hlay.addWidget(btn_prev)
@@ -688,38 +701,94 @@ class MediaSliderImageItem(MediaItem):
         self._controls_widget = self._build_controls()
         self._proxy = QGraphicsProxyWidget(self)
         self._proxy.setWidget(self._controls_widget)
+        
+        # Configurações para permitir cliques nos botões
+        self._proxy.setFlag(QGraphicsProxyWidget.ItemIsFocusable, False)
+        self._proxy.setAcceptHoverEvents(False)
+        
+        # Não instalar event filter - causa problemas
+        # Deixe os botões funcionarem naturalmente
+        
         self._update_proxy_geometry()
         self._update_handle_positions()
 
+    def eventFilter(self, obj, event):
+        # Force mouse release to prevent stuck buttons
+        if event.type() == QEvent.MouseButtonRelease:
+            for btn in self._controls_widget.findChildren(QPushButton):
+                btn.releaseMouse()
+        return super().eventFilter(obj, event)
+
     def _build_controls(self) -> QWidget:
         w = QWidget()
+        w.setAttribute(Qt.WA_TranslucentBackground)
         lay = QVBoxLayout(w)
         lay.setContentsMargins(4, 4, 4, 4)
         
         # Controls row
         controls_row = QWidget()
+        controls_row.setAttribute(Qt.WA_TranslucentBackground)
         hlay = QHBoxLayout(controls_row)
         hlay.setContentsMargins(0, 0, 0, 0)
-        prev = QPushButton("◀")
-        play = QPushButton("▶")
-        pause = QPushButton("⏸")
-        nxt = QPushButton("▶")
+        
+        # Usar QLabel clicável em vez de QPushButton
+        prev = QLabel("◀")
+        prev.setAlignment(Qt.AlignCenter)
+        prev.setStyleSheet("background-color: #ddd; padding: 2px; border-radius: 3px;")
+        prev.setFixedSize(30, 20)
+        prev.setMouseTracking(True)
+        
+        play = QLabel("▶")
+        play.setAlignment(Qt.AlignCenter)
+        play.setStyleSheet("background-color: #ddd; padding: 2px; border-radius: 3px;")
+        play.setFixedSize(30, 20)
+        play.setMouseTracking(True)
+        
+        pause = QLabel("⏸")
+        pause.setAlignment(Qt.AlignCenter)
+        pause.setStyleSheet("background-color: #ddd; padding: 2px; border-radius: 3px;")
+        pause.setFixedSize(30, 20)
+        pause.setMouseTracking(True)
+        
+        nxt = QLabel("⏭")
+        nxt.setAlignment(Qt.AlignCenter)
+        nxt.setStyleSheet("background-color: #ddd; padding: 2px; border-radius: 3px;")
+        nxt.setFixedSize(30, 20)
+        nxt.setMouseTracking(True)
+        
+        # Label de posição - acima dos botões
         self._label = QLabel(f"{self._index+1}/{len(self._entries)}")
-        for btn in (prev, play, pause, nxt):
-            btn.setFixedHeight(20)
-        prev.clicked.connect(self._prev)
-        play.clicked.connect(self._play)
-        pause.clicked.connect(self._pause)
-        nxt.clicked.connect(self._next)
-        hlay.addWidget(prev)
-        hlay.addWidget(play)
-        hlay.addWidget(pause)
-        hlay.addWidget(nxt)
-        hlay.addWidget(self._label)
-        lay.addWidget(controls_row)
+        self._label.setAlignment(Qt.AlignCenter)
+        self._label.setStyleSheet("font-weight: bold; color: #333;")
+        
+        # Conectar cliques
+        prev.mousePressEvent = lambda e: self._prev()
+        play.mousePressEvent = lambda e: self._play()
+        pause.mousePressEvent = lambda e: self._pause()
+        nxt.mousePressEvent = lambda e: self._next()
+        
+        # Layout dos controles
+        controls_layout = QVBoxLayout()
+        controls_layout.setContentsMargins(0, 0, 0, 0)
+        controls_layout.setSpacing(2)
+        
+        # Linha 1: botões de controle
+        controls_hlay = QHBoxLayout()
+        controls_hlay.setContentsMargins(0, 0, 0, 0)
+        controls_hlay.addWidget(prev)
+        controls_hlay.addWidget(play)
+        controls_hlay.addWidget(pause)
+        controls_hlay.addWidget(nxt)
+        controls_hlay.addStretch()
+        
+        controls_layout.addWidget(self._label)
+        controls_layout.addLayout(controls_hlay)
+        
+        lay.addLayout(controls_layout)
         
         # Playlist row - thumbnails
         playlist_row = QWidget()
+        playlist_row.setAttribute(Qt.WA_TranslucentBackground)
         phlay = QHBoxLayout(playlist_row)
         phlay.setContentsMargins(0, 0, 0, 0)
         
@@ -731,7 +800,8 @@ class MediaSliderImageItem(MediaItem):
             if not pix.isNull():
                 thumb_label.setPixmap(pix.scaled(40, 40, Qt.KeepAspectRatio, Qt.SmoothTransformation))
             thumb_label.setStyleSheet("border: 1px solid #ccc;")
-            thumb_label.mousePressEvent = lambda event, i=idx: self._go_to_index(i)
+            thumb_label.setMouseTracking(True)
+            thumb_label.mousePressEvent = lambda e, i=idx: self._go_to_index(i)
             self._playlist_labels.append(thumb_label)
             phlay.addWidget(thumb_label)
         
@@ -758,14 +828,22 @@ class MediaSliderImageItem(MediaItem):
             painter.drawPixmap(target, pix.scaled(target.size(), Qt.KeepAspectRatio, Qt.SmoothTransformation))
 
     def _update_label(self):
-        if hasattr(self, "_label"):
-            self._label.setText(f"{self._index+1}/{len(self._entries)}")
-        if hasattr(self, "_playlist_labels"):
-            for idx, label in enumerate(self._playlist_labels):
-                if idx == self._index:
-                    label.setStyleSheet("border: 2px solid #0078d4;")
-                else:
-                    label.setStyleSheet("border: 1px solid #ccc;")
+        if hasattr(self, "_label") and self._label is not None:
+            try:
+                self._label.setText(f"{self._index+1}/{len(self._entries)}")
+            except RuntimeError:
+                pass
+        if hasattr(self, "_playlist_labels") and self._playlist_labels:
+            try:
+                for idx, label in enumerate(self._playlist_labels):
+                    if label is None:
+                        continue
+                    if idx == self._index:
+                        label.setStyleSheet("border: 2px solid #0078d4;")
+                    else:
+                        label.setStyleSheet("border: 1px solid #ccc;")
+            except RuntimeError:
+                pass
 
     def _go_to_index(self, idx):
         if 0 <= idx < len(self._entries):
@@ -788,6 +866,61 @@ class MediaSliderImageItem(MediaItem):
 
     def _pause(self):
         self._timer.stop()
+
+    def _rebuild_playlist_widget(self):
+        """Reconstrói as miniaturas da playlist"""
+        if not hasattr(self, '_controls_widget') or self._controls_widget is None:
+            return
+        
+        # Encontrar o layout da playlist
+        playlist_layout = None
+        for child in self._controls_widget.children():
+            if isinstance(child, QVBoxLayout):
+                for i in range(child.count()):
+                    item = child.itemAt(i)
+                    if item and item.widget():
+                        widget = item.widget()
+                        # Procurar pelo widget da playlist (geralmente o segundo widget)
+                        for subchild in widget.children():
+                            if isinstance(subchild, QHBoxLayout):
+                                playlist_layout = subchild
+                                break
+                if playlist_layout:
+                    break
+        
+        if not playlist_layout:
+            return
+        
+        # Remover widgets antigos (manter o stretch)
+        while playlist_layout.count() > 0:
+            item = playlist_layout.itemAt(0)
+            if item:
+                widget = item.widget()
+                if widget:
+                    widget.deleteLater()
+                playlist_layout.takeAt(0)
+        
+        # Adicionar stretch primeiro
+        playlist_layout.addStretch()
+        
+        # Criar novas miniaturas
+        self._playlist_labels = []
+        for idx, entry in enumerate(self._entries):
+            thumb_label = QLabel()
+            thumb_label.setFixedSize(40, 40)
+            pix = entry["pix"]
+            if not pix.isNull():
+                thumb_label.setPixmap(pix.scaled(40, 40, Qt.KeepAspectRatio, Qt.SmoothTransformation))
+            thumb_label.setStyleSheet("border: 1px solid #ccc;")
+            thumb_label.setMouseTracking(True)
+            thumb_label.mousePressEvent = lambda e, i=idx: self._go_to_index(i)
+            self._playlist_labels.append(thumb_label)
+            
+            # Inserir antes do stretch
+            playlist_layout.insertWidget(playlist_layout.count() - 1, thumb_label)
+        
+        self._update_label()
+        self.update()
 
     def _update_proxy_geometry(self):
         if hasattr(self, "_proxy") and self._proxy is not None:
