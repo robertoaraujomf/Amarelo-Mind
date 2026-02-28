@@ -137,6 +137,9 @@ class RemoveItemCommand(QUndoCommand):
         super().__init__(description)
         self.scene = scene
         self.item = item
+        # Parar mídia se for um item de mídia
+        if hasattr(item, 'stop_video'):
+            item.stop_video()
 
     def redo(self):
         self.scene.removeItem(self.item)
@@ -697,6 +700,12 @@ class AmareloMainWindow(QMainWindow):
 
         # Botão Teclas de Atalho
         make_action("TecladeAtalho.png", "Teclas de atalho", self.show_shortcuts_dialog)
+
+        # Botão Ajuda
+        make_action("Ajuda.png", "Dicas de uso", self.show_help_dialog)
+
+        # Botão Sobre
+        make_action("Sobre.png", "Sobre o App", self.show_about_dialog)
 
     # --------------------------------------------------
     # ESTADOS
@@ -1902,10 +1911,129 @@ class AmareloMainWindow(QMainWindow):
         
         dialog.exec()
 
+    def show_help_dialog(self):
+        """Abre diálogo de ajuda com dicas de uso"""
+        from PySide6.QtWidgets import QDialog, QVBoxLayout, QLabel, QPushButton, QScrollArea, QWidget
+        from PySide6.QtCore import Qt
+        
+        dialog = QDialog(self)
+        dialog.setWindowTitle("Dicas de Uso")
+        dialog.setMinimumSize(500, 400)
+        
+        layout = QVBoxLayout(dialog)
+        
+        help_text = """
+<h2>Bem-vindo ao Amarelo Mind!</h2>
 
- # ======================================================
- # MAIN
- # ======================================================
+<p>Aqui estão algumas dicas para ajudá-lo a usar o aplicativo:</p>
+
+<h3>📝 Criando seu mapa mental</h3>
+<ul>
+<li>Clique no botão <b>Novo</b> para criar um novo mapa mental</li>
+<li>Clique no botão <b>Adicionar</b> para adicionar novos nós</li>
+<li>Clique duas vezes em um nó para editar o texto</li>
+</ul>
+
+<h3>🔗 Conectando nós</h3>
+<ul>
+<li>Selecione dois nós e clique em <b>Conectar</b> para criar uma conexão</li>
+<li>As conexões são automáticas e se ajustam quando você move os nós</li>
+</ul>
+
+<h3>🎨 Personalizando</h3>
+<ul>
+<li>Use <b>Fonte</b> para alterar a fonte do texto</li>
+<li>Use <b>Cores</b> para alterar as cores dos nós</li>
+<li>Redimensione os nós usando as alças nos cantos</li>
+</ul>
+
+<h3>🖼️ Mídia</h3>
+<ul>
+<li>Insira imagens usando o botão <b>Mídia</b></li>
+<li>Arraste e solte imagens diretamente na cena</li>
+<li>Para múltiplas imagens, um slideshow será criado automaticamente</li>
+</ul>
+
+<h3>⌨️ Atalhos de teclado</h3>
+<ul>
+<li>Clique no botão <b>Teclas de atalho</b> para personalizar os atalhos</li>
+<li>Os atalhos são salvos automaticamente</li>
+</ul>
+
+<h3>💾 Salvando e exportando</h3>
+<ul>
+<li>Use <b>Salvar</b> para salvar seu trabalho</li>
+<li>Use <b>Exportar</b> para exportar como imagem PNG</li>
+</ul>
+"""
+        
+        scroll = QScrollArea()
+        scroll.setWidgetResizable(True)
+        content = QLabel(help_text)
+        content.setTextFormat(Qt.RichText)
+        content.setWordWrap(True)
+        content.setMargin(10)
+        scroll.setWidget(content)
+        
+        layout.addWidget(scroll)
+        
+        close_btn = QPushButton("Fechar")
+        close_btn.clicked.connect(dialog.accept)
+        layout.addWidget(close_btn)
+        
+        dialog.exec()
+
+    def show_about_dialog(self):
+        """Abre diálogo sobre o aplicativo"""
+        from PySide6.QtWidgets import QDialog, QVBoxLayout, QLabel, QPushButton
+        from PySide6.QtCore import Qt
+        
+        dialog = QDialog(self)
+        dialog.setWindowTitle("Sobre o App")
+        dialog.setMinimumSize(400, 300)
+        
+        layout = QVBoxLayout(dialog)
+        
+        about_text = """
+<h2>Amarelo Mind</h2>
+
+<p><b>Versão 1.0.0</b></p>
+
+<p>Um aplicativo de mapa mental moderno e intuitivo.</p>
+
+<p><b>Recursos:</b></p>
+<ul>
+<li>Crie e edite mapas mentais com facilidade</li>
+<li>Adicione imagens</li>
+<li>Conecte nós automaticamente</li>
+<li>Personalize cores e fontes</li>
+<li>Exporte seu trabalho como imagem</li>
+<li>Atalhos de teclado personalizáveis</li>
+</ul>
+
+<p>© 2026 Amarelo Mind. Todos os direitos reservados.</p>
+
+<p>Desenvolvido por: Roberto Araujo de Moraes Freitas</p>
+"""
+        
+        label = QLabel(about_text)
+        label.setTextFormat(Qt.RichText)
+        label.setWordWrap(True)
+        label.setAlignment(Qt.AlignCenter)
+        label.setMargin(20)
+        
+        layout.addWidget(label)
+        
+        close_btn = QPushButton("Fechar")
+        close_btn.clicked.connect(dialog.accept)
+        layout.addWidget(close_btn)
+        
+        dialog.exec()
+
+
+  # ======================================================
+  # MAIN
+  # ======================================================
 if __name__ == "__main__":
     app = QApplication(sys.argv)
     

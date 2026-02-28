@@ -1,36 +1,21 @@
 # -*- mode: python ; coding: utf-8 -*-
+import sys ; sys.setrecursionlimit(sys.getrecursionlimit() * 5)
 import os
-from PyInstaller.utils.hooks import collect_submodules, collect_data_files
-
-# Project base - use current directory
-project_dir = os.getcwd()
-assets_dir = os.path.join(project_dir, 'assets')
-
-# Hidden imports to ensure Qt plugins are collected
-hidden = []
-hidden += collect_submodules('PySide6.QtMultimedia')
-hidden += collect_submodules('PySide6.QtMultimediaWidgets')
-hidden += collect_submodules('PySide6.QtWebEngineCore')
-hidden += collect_submodules('PySide6.QtWebEngineWidgets')
-
-# Data files: assets and any non-Python resources
-datas = []
-if os.path.isdir(assets_dir):
-    datas.append((assets_dir, 'assets'))
-
-# Include PySide6 Qt resources if needed (usually handled by hooks)
-datas += collect_data_files('PySide6', include_py_files=False)
 
 block_cipher = None
 
-app = 'run_amarelo.py'
-
 a = Analysis(
-    [app],
-    pathex=[project_dir],
+    ['run_amarelo.py'],
+    pathex=[],
     binaries=[],
-    datas=datas,
-    hiddenimports=hidden,
+    datas=[('assets', 'assets')],
+    hiddenimports=[
+        'cv2',
+        'PySide6.QtMultimedia',
+        'PySide6.QtMultimediaWidgets',
+        'PySide6.QtWebEngineCore',
+        'PySide6.QtWebEngineWidgets',
+    ],
     hookspath=[],
     runtime_hooks=[],
     excludes=[],
@@ -57,5 +42,5 @@ exe = EXE(
     target_arch=None,
     codesign_identity=None,
     entitlements_file=None,
-    icon=os.path.join('assets', 'AmareloLogo.ico') if os.path.exists(os.path.join('assets','AmareloLogo.ico')) else None,
+    icon='assets/icons/App_icon.ico',
 )

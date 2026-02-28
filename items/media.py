@@ -457,6 +457,11 @@ class MediaAVSliderItem(MediaItem):
     def paint(self, painter: QPainter, option, widget=None):
         pass
 
+    def stop_video(self):
+        """Para o vídeo e áudio quando o objeto for removido"""
+        if hasattr(self, '_player'):
+            self._player.stop()
+
     def _update_proxy_geometry(self):
         if hasattr(self, '_proxy') and self._proxy is not None:
             self._proxy.setPos(0, 0)
@@ -552,12 +557,17 @@ class MediaAVItem(MediaItem):
         self._player = QMediaPlayer()
         self._player.setAudioOutput(self._audio)
         
-        # Placeholder para vídeo
-        self._video_placeholder = QLabel()
-        self._video_placeholder.setAlignment(Qt.AlignCenter)
-        self._video_placeholder.setStyleSheet("background-color: #222; color: #888; border: 2px solid #444; border-radius: 8px;")
-        self._video_placeholder.setMinimumSize(320, 180)
-        self._video_placeholder.setText("🎬 Vídeo\n(áudio disponível)")
+        # Usar OpenCV para captura de vídeo
+        self._cv_capture = None
+        self._video_label = QLabel()
+        self._video_label.setAlignment(Qt.AlignCenter)
+        self._video_label.setStyleSheet("background-color: black;")
+        self._video_label.setMinimumSize(320, 180)
+        self._video_label.setText("Carregando...")
+        
+        # Timer para atualizar frames
+        self._video_timer = QTimer(self)
+        self._video_timer.timeout.connect(self._update_video_frame)
 
         # Controls usando QLabel clicável
         from PySide6.QtWidgets import QHBoxLayout as HBoxLay
@@ -590,13 +600,30 @@ class MediaAVItem(MediaItem):
         stop.setFixedSize(35, 25)
         stop.setMouseTracking(True)
         
+        # Só mostrar navegação se houver mais de uma fonte
+        has_multiple = len(self._sources) > 1
+        
         # Conectar cliques
         play.mousePressEvent = lambda e: self._player.play()
         stop.mousePressEvent = lambda e: self._player.stop()
         
-        hlay.addWidget(prev)
+        # Só adicionar botões de navegação se houver múltiplas fontes
+        if has_multiple:
+            prev.mousePressEvent = lambda e: self._prev()
+            hlay.addWidget(prev)
+        
         hlay.addWidget(play)
         hlay.addWidget(stop)
+        
+        if has_multiple:
+            nxt = QLabel("⏭")
+            nxt.setAlignment(Qt.AlignCenter)
+            nxt.setStyleSheet("background-color: #ddd; padding: 4px; border-radius: 3px; margin: 2px;")
+            nxt.setFixedSize(35, 25)
+            nxt.setMouseTracking(True)
+            nxt.mousePressEvent = lambda e: self._next()
+            hlay.addWidget(nxt)
+        
         hlay.addStretch()
         vlay.addWidget(controls_row)
         # Progresso e volume
@@ -614,7 +641,7 @@ class MediaAVItem(MediaItem):
         container_lay = QVBoxLayout(container)
         container_lay.setContentsMargins(0, 0, 0, 0)
         container_lay.setSpacing(0)
-        container_lay.addWidget(self._video_placeholder, 1)
+        container_lay.addWidget(self._video_label, 1)
         container_lay.addWidget(ctrl, 0)
 
         self._proxy = QGraphicsProxyWidget(self)
@@ -622,10 +649,14 @@ class MediaAVItem(MediaItem):
         self._update_proxy_geometry()
         self._update_handle_positions()
 
-        # Set media source
+        # Set media source e iniciar captura OpenCV
+        source_str = str(source)
+        if not source_str.startswith('http://') and not source_str.startswith('https://'):
+            # Apenas arquivos locais para OpenCV
+            self._init_opencv_capture(source_str)
+        
         try:
             from PySide6.QtCore import QUrl
-            source_str = str(source)
             if source_str.startswith('http://') or source_str.startswith('https://'):
                 self._player.setSource(QUrl(source_str))
             else:
@@ -649,6 +680,62 @@ class MediaAVItem(MediaItem):
     def paint(self, painter: QPainter, option, widget=None):
         # Nada a desenhar: o conteúdo é o proxy com widgets reais
         pass
+
+    def _init_opencv_capture(self, filepath):
+        """Inicializa a captura de vídeo com OpenCV"""
+        try:
+            import cv2
+            self._cv_capture = cv2.VideoCapture(filepath)
+            if self._cv_capture.isOpened():
+                # Iniciar timer para atualizar frames (30 FPS)
+                self._video_timer.start(33)
+        except Exception as e:
+            print(f"OpenCV init error: {e}")
+
+    def _update_video_frame(self):
+        """Atualiza o frame do vídeo usando OpenCV"""
+        if self._cv_capture is None or not self._cv_capture.isOpened():
+            return
+        
+        # Verificar se o áudio está tocando para sincronizar
+        if self._player.playbackState() != self._player.PlaybackState.PlayingState:
+            return
+        
+        try:
+            import cv2
+            ret, frame = self._cv_capture.read()
+            if ret and frame is not None:
+                # Converter BGR para RGB
+                frame_rgb = cv2.cvtColor(frame, cv2.COLOR_BGR2RGB)
+                
+                # Redimensionar para caber no label
+                h, w, ch = frame_rgb.shape
+                bytes_per_line = ch * w
+                
+                # Criar QImage e converter para QPixmap
+                qt_image = QImage(frame_rgb.data, w, h, bytes_per_line, QImage.Format_RGB888)
+                pixmap = QPixmap.fromImage(qt_image)
+                
+                # Redimensionar para caber no label mantendo aspect ratio
+                scaled_pixmap = pixmap.scaled(
+                    self._video_label.size(), 
+                    Qt.KeepAspectRatio, 
+                    Qt.SmoothTransformation
+                )
+                self._video_label.setPixmap(scaled_pixmap)
+            else:
+                # Vídeo chegou ao fim, reiniciar
+                self._cv_capture.set(cv2.CAP_PROP_POS_FRAMES, 0)
+        except Exception:
+            pass
+
+    def stop_video(self):
+        """Para o vídeo e áudio quando o objeto for removido"""
+        self._video_timer.stop()
+        self._player.stop()
+        if self._cv_capture is not None and self._cv_capture.isOpened():
+            self._cv_capture.release()
+            self._cv_capture = None
 
     def _update_proxy_geometry(self):
         if hasattr(self, '_proxy') and self._proxy is not None:
@@ -772,8 +859,17 @@ class MediaSliderImageItem(MediaItem):
 
         # Controles e proxy
         self._timer = QTimer(self)
-        self._timer.setInterval(2500)
+        self._timer.setInterval(3000)  # 3 segundos por imagem
         self._timer.timeout.connect(self._next)
+        
+        # Fade transition
+        self._fade_alpha = 0
+        self._fade_direction = 1  # 1 = appearing, -1 = disappearing
+        self._fade_timer = QTimer(self)
+        self._fade_timer.setInterval(50)  # 50ms por step de fade
+        self._fade_timer.timeout.connect(self._update_fade)
+        self._next_index = 0
+        
         self._controls_widget = self._build_controls()
         self._proxy = QGraphicsProxyWidget(self)
         self._proxy.setWidget(self._controls_widget)
@@ -782,8 +878,9 @@ class MediaSliderImageItem(MediaItem):
         self._proxy.setFlag(QGraphicsProxyWidget.ItemIsFocusable, False)
         self._proxy.setAcceptHoverEvents(False)
         
-        # Não instalar event filter - causa problemas
-        # Deixe os botões funcionarem naturalmente
+        # Iniciar slideshow automaticamente
+        if len(self._entries) > 1:
+            self._timer.start()
         
         self._update_proxy_geometry()
         self._update_handle_positions()
@@ -801,47 +898,54 @@ class MediaSliderImageItem(MediaItem):
         lay = QVBoxLayout(w)
         lay.setContentsMargins(4, 4, 4, 4)
         
+        has_multiple = len(self._entries) > 1
+        
         # Controls row
         controls_row = QWidget()
         controls_row.setAttribute(Qt.WA_TranslucentBackground)
         hlay = QHBoxLayout(controls_row)
         hlay.setContentsMargins(0, 0, 0, 0)
         
-        # Usar QLabel clicável em vez de QPushButton
-        prev = QLabel("◀")
-        prev.setAlignment(Qt.AlignCenter)
-        prev.setStyleSheet("background-color: #ddd; padding: 2px; border-radius: 3px;")
-        prev.setFixedSize(30, 20)
-        prev.setMouseTracking(True)
+        # Botões de navegação (só se houver mais de 1 imagem)
+        if has_multiple:
+            prev = QLabel("◀")
+            prev.setAlignment(Qt.AlignCenter)
+            prev.setStyleSheet("background-color: #ddd; padding: 2px; border-radius: 3px;")
+            prev.setFixedSize(30, 20)
+            prev.setMouseTracking(True)
+            prev.mousePressEvent = lambda e: self._prev()
+            hlay.addWidget(prev)
         
-        play = QLabel("▶")
-        play.setAlignment(Qt.AlignCenter)
-        play.setStyleSheet("background-color: #ddd; padding: 2px; border-radius: 3px;")
-        play.setFixedSize(30, 20)
-        play.setMouseTracking(True)
+        # Play/Pause - único botão que alterna
+        self._play_btn = QLabel("▶")
+        self._play_btn.setAlignment(Qt.AlignCenter)
+        self._play_btn.setStyleSheet("background-color: #ddd; padding: 2px; border-radius: 3px;")
+        self._play_btn.setFixedSize(30, 20)
+        self._play_btn.setMouseTracking(True)
         
-        pause = QLabel("⏸")
-        pause.setAlignment(Qt.AlignCenter)
-        pause.setStyleSheet("background-color: #ddd; padding: 2px; border-radius: 3px;")
-        pause.setFixedSize(30, 20)
-        pause.setMouseTracking(True)
+        # State: True = playing, False = paused
+        self._is_playing = has_multiple
+        self._update_play_button()
         
-        nxt = QLabel("⏭")
-        nxt.setAlignment(Qt.AlignCenter)
-        nxt.setStyleSheet("background-color: #ddd; padding: 2px; border-radius: 3px;")
-        nxt.setFixedSize(30, 20)
-        nxt.setMouseTracking(True)
+        self._play_btn.mousePressEvent = lambda e: self._toggle_play()
+        
+        hlay.addWidget(self._play_btn)
+        
+        if has_multiple:
+            nxt = QLabel("⏭")
+            nxt.setAlignment(Qt.AlignCenter)
+            nxt.setStyleSheet("background-color: #ddd; padding: 2px; border-radius: 3px;")
+            nxt.setFixedSize(30, 20)
+            nxt.setMouseTracking(True)
+            nxt.mousePressEvent = lambda e: self._next()
+            hlay.addWidget(nxt)
+        
+        hlay.addStretch()
         
         # Label de posição - acima dos botões
         self._label = QLabel(f"{self._index+1}/{len(self._entries)}")
         self._label.setAlignment(Qt.AlignCenter)
         self._label.setStyleSheet("font-weight: bold; color: #333;")
-        
-        # Conectar cliques
-        prev.mousePressEvent = lambda e: self._prev()
-        play.mousePressEvent = lambda e: self._play()
-        pause.mousePressEvent = lambda e: self._pause()
-        nxt.mousePressEvent = lambda e: self._next()
         
         # Layout dos controles
         controls_layout = QVBoxLayout()
@@ -891,17 +995,66 @@ class MediaSliderImageItem(MediaItem):
         return self._rect
 
     def paint(self, painter: QPainter, option, widget=None):
-        entry = self._entries[self._index]
-        pix = entry["pix"]
-        movie = entry["movie"]
         painter.setRenderHint(QPainter.SmoothPixmapTransform, True)
         target = self._img_rect.toRect()
+        
+        # Imagem atual (sempre visível)
+        current_entry = self._entries[self._index]
+        current_pix = current_entry["pix"]
+        movie = current_entry["movie"]
+        
         if movie is not None:
             frame = movie.currentPixmap()
             if not frame.isNull():
                 painter.drawPixmap(target, frame.scaled(target.size(), Qt.KeepAspectRatio, Qt.SmoothTransformation))
-        elif not pix.isNull():
-            painter.drawPixmap(target, pix.scaled(target.size(), Qt.KeepAspectRatio, Qt.SmoothTransformation))
+        elif not current_pix.isNull():
+            # Se há transição de fade, desenhar com opacidade
+            if self._fade_alpha > 0 and self._next_index != self._index:
+                next_pix = self._entries[self._next_index]["pix"]
+                if not next_pix.isNull():
+                    # Desenhar imagem atual com opacity
+                    painter.setOpacity(1.0 - (self._fade_alpha / 255.0))
+                    painter.drawPixmap(target, current_pix.scaled(target.size(), Qt.KeepAspectRatio, Qt.SmoothTransformation))
+                    # Desenhar próxima imagem com opacity
+                    painter.setOpacity(self._fade_alpha / 255.0)
+                    painter.drawPixmap(target, next_pix.scaled(target.size(), Qt.KeepAspectRatio, Qt.SmoothTransformation))
+                    painter.setOpacity(1.0)
+                else:
+                    painter.drawPixmap(target, current_pix.scaled(target.size(), Qt.KeepAspectRatio, Qt.SmoothTransformation))
+            else:
+                painter.drawPixmap(target, current_pix.scaled(target.size(), Qt.KeepAspectRatio, Qt.SmoothTransformation))
+
+    def _update_fade(self):
+        """Atualiza a transição de fade"""
+        if self._fade_direction == 1:
+            # Aparecendo
+            self._fade_alpha += 15  # Speed of fade in
+            if self._fade_alpha >= 255:
+                self._fade_alpha = 255
+                self._fade_direction = -1
+                self._index = self._next_index
+                self._update_label()
+        else:
+            # Desaparecendo
+            self._fade_alpha -= 15
+            if self._fade_alpha <= 0:
+                self._fade_alpha = 0
+                self._fade_timer.stop()
+                self._fade_direction = 1
+        
+        self.update()
+
+    def _play(self):
+        """Inicia o slideshow"""
+        if len(self._entries) > 1:
+            self._timer.start()
+            if self._fade_alpha == 0 or self._fade_alpha == 255:
+                self._fade_timer.start()
+
+    def _pause(self):
+        """Pausa o slideshow"""
+        self._timer.stop()
+        self._fade_timer.stop()
 
     def _update_label(self):
         if hasattr(self, "_label") and self._label is not None:
@@ -922,26 +1075,61 @@ class MediaSliderImageItem(MediaItem):
                 pass
 
     def _go_to_index(self, idx):
-        if 0 <= idx < len(self._entries):
-            self._index = idx
-            self._update_label()
-            self.update()
+        if 0 <= idx < len(self._entries) and idx != self._index:
+            self._next_index = idx
+            self._fade_alpha = 0
+            self._fade_direction = 1
+            self._fade_timer.start()
 
     def _prev(self):
-        self._index = (self._index - 1) % len(self._entries)
-        self._update_label()
-        self.update()
+        if len(self._entries) <= 1:
+            return
+        self._next_index = (self._index - 1) % len(self._entries)
+        self._fade_alpha = 0
+        self._fade_direction = 1
+        self._fade_timer.start()
 
     def _next(self):
-        self._index = (self._index + 1) % len(self._entries)
-        self._update_label()
-        self.update()
+        if len(self._entries) <= 1:
+            return
+        self._next_index = (self._index + 1) % len(self._entries)
+        self._fade_alpha = 0
+        self._fade_direction = 1
+        self._fade_timer.start()
+
+    def _toggle_play(self):
+        """Alterna entre play e pause"""
+        self._is_playing = not self._is_playing
+        self._update_play_button()
+        if self._is_playing:
+            self._play()
+        else:
+            self._pause()
+
+    def _update_play_button(self):
+        """Atualiza o ícone do botão play/pause"""
+        if hasattr(self, '_play_btn') and self._play_btn is not None:
+            try:
+                if self._is_playing:
+                    self._play_btn.setText("⏸")
+                    self._play_btn.setStyleSheet("background-color: #4CAF50; color: white; padding: 2px; border-radius: 3px;")
+                else:
+                    self._play_btn.setText("▶")
+                    self._play_btn.setStyleSheet("background-color: #ddd; padding: 2px; border-radius: 3px;")
+            except RuntimeError:
+                pass
 
     def _play(self):
-        self._timer.start()
+        """Inicia o slideshow"""
+        if len(self._entries) > 1:
+            self._timer.start()
+            if self._fade_alpha == 0 or self._fade_alpha == 255:
+                self._fade_timer.start()
 
     def _pause(self):
+        """Pausa o slideshow"""
         self._timer.stop()
+        self._fade_timer.stop()
 
     def _rebuild_playlist_widget(self):
         """Reconstrói as miniaturas da playlist"""
