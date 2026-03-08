@@ -768,6 +768,14 @@ class AmareloMainWindow(QMainWindow):
             self.autosave_timer.stop()
             self.autosave_timer.start()
     
+    def toggle_autosave(self, checked):
+        """Alterna salvamento automático"""
+        self.autosave_enabled = checked
+        if checked:
+            self.autosave_timer.start()
+        else:
+            self.autosave_timer.stop()
+    
     def _autosave(self):
         """Executa autosave se houver mudanças e arquivo estiver salvo"""
         if self.autosave_enabled and self.current_file and self.undo_stack.canUndo():
@@ -831,6 +839,15 @@ class AmareloMainWindow(QMainWindow):
         self.act_new = make_action("Novo.png", "Novo mapa mental", self.new_window, "Novo")
         self.act_open = make_action("Abrir.png", "Abrir mapa mental", self.open_project, "Abrir")
         self.act_save = make_action("Salvar.png", "Salvar alterações", self.save_project, "Salvar")
+        
+        # Checkbox para autosave
+        self.act_autosave = QAction("Auto-salvar", self)
+        self.act_autosave.setCheckable(True)
+        self.act_autosave.setChecked(False)
+        self.act_autosave.setToolTip("Habilitar salvamento automático")
+        self.act_autosave.triggered.connect(self.toggle_autosave)
+        tb.addAction(self.act_autosave)
+        
         self.act_export = make_action("Exportar.png", "Exportar como imagem", self.export_png)
 
         tb.addSeparator()
