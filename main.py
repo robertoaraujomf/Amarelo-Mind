@@ -203,12 +203,65 @@ class ReplaceMediaCommand(QUndoCommand):
             self.scene.removeItem(self.old_item)
         if not self.new_item.scene():
             self.scene.addItem(self.new_item)
+        self.new_item.setPos(self.old_item.pos())
 
     def undo(self):
         if self.new_item.scene():
             self.scene.removeItem(self.new_item)
         if not self.old_item.scene():
             self.scene.addItem(self.old_item)
+
+
+class ToggleShadowCommand(QUndoCommand):
+    """Comando para desfazer/refazer toggle de sombra"""
+    def __init__(self, items):
+        super().__init__("Alternar sombra")
+        self.items = items
+        self.old_states = []
+        for item in items:
+            self.old_states.append({
+                'has_shadow': item.has_shadow,
+                'effect': item.graphicsEffect()
+            })
+
+    def redo(self):
+        for item in self.items:
+            item.toggle_shadow()
+
+    def undo(self):
+        for i, item in enumerate(self.items):
+            state = self.old_states[i]
+            if state['has_shadow'] and not item.has_shadow:
+                item.toggle_shadow()
+            elif not state['has_shadow'] and item.has_shadow:
+                item.toggle_shadow()
+
+
+class ApplyStyleFilteredCommand(QUndoCommand):
+    """Comando para desfazer/refazer aplicação de estilo a itens filtrados"""
+    def __init__(self, items, new_style, scene):
+        super().__init__("Aplicar estilo")
+        self.items = items
+        self.new_style = new_style
+        self.scene = scene
+        self.old_states = []
+        for item in items:
+            self.old_states.append({
+                'node_type': item.node_type,
+                'custom_color': item.custom_color
+            })
+
+    def redo(self):
+        for item in self.items:
+            item.set_node_type(self.new_style)
+            item.update_brush()
+
+    def undo(self):
+        for i, item in enumerate(self.items):
+            state = self.old_states[i]
+            item.node_type = state['node_type']
+            item.custom_color = state['custom_color']
+            item.update_brush()
 
 
 
@@ -499,6 +552,17 @@ class InfiniteCanvas(QGraphicsView):
                     new_pos = original_pos + delta
                     item.setPos(new_pos)
             
+            # Atualizar conexões para todos os itens movidos
+            try:
+                from core.connection import SmartConnection
+                for item in self._item_positions.keys():
+                    if item.isSelected() and item.scene():
+                        for conn in item.scene().items():
+                            if isinstance(conn, SmartConnection) and (conn.source == item or conn.target == item):
+                                conn.update_path()
+            except:
+                pass
+            
             # Mostrar linhas de alinhamento para o item sendo arrastado se estiver ativo
             main_window = QApplication.activeWindow()
             if hasattr(main_window, "alinhar_ativo") and main_window.alinhar_ativo:
@@ -517,6 +581,11 @@ class InfiniteCanvas(QGraphicsView):
         if self._dragging_connection and event.button() == Qt.LeftButton:
             self._end_drag_connection()
             return
+        
+        # Se estava fazendo seleção retangular (botão direito)
+        if event.button() == Qt.RightButton and self.dragMode() == QGraphicsView.RubberBandDrag:
+            # Resetar para modo de seleção padrão após seleção retangular
+            self.setDragMode(QGraphicsView.NoDrag)
         
         # Se estava arrastando um item
         if self._dragging_item and event.button() == Qt.LeftButton:
@@ -1330,9 +1399,10 @@ class AmareloMainWindow(QMainWindow):
     
     def apply_style_to_filtered(self, style_type: str):
         """Aplica estilo a todos os itens filtrados"""
-        for item in self.item_filter.get_filtered_items():
-            if isinstance(item, StyledNode):
-                item.set_node_type(style_type)
+        items = [item for item in self.item_filter.get_filtered_items() if isinstance(item, StyledNode)]
+        if items:
+            cmd = ApplyStyleFilteredCommand(items, style_type, self.scene)
+            self.undo_stack.push(cmd)
 
     def add_object(self):
         sel = self.scene.selectedItems()
@@ -1575,9 +1645,10 @@ class AmareloMainWindow(QMainWindow):
                 self.undo_stack.endMacro()
 
     def toggle_shadow(self):
-        for item in self.scene.selectedItems():
-            if isinstance(item, StyledNode):
-                item.toggle_shadow()
+        items = [item for item in self.scene.selectedItems() if isinstance(item, StyledNode)]
+        if items:
+            cmd = ToggleShadowCommand(items)
+            self.undo_stack.push(cmd)
 
     def _update_window_title(self):
         """Atualiza a barra de título: Amarelo Mind - nome.amind ou Amarelo Mind"""
