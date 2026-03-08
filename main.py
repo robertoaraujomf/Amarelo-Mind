@@ -556,7 +556,6 @@ class AmareloMainWindow(QMainWindow):
             "Copiar": "Ctrl+C",
             "Colar": "Ctrl+V",
             "Adicionar": "+",
-            "Mídia": "",
             "Conectar": "C",
             "Excluir": "Delete",
             "Fonte": "",
@@ -682,7 +681,6 @@ class AmareloMainWindow(QMainWindow):
         tb.addSeparator()
 
         self.act_add = make_action("Adicionar.png", "Adicionar objeto", self.add_object, "Adicionar")
-        self.act_media = make_action("Midia.png", "Mídia", self.insert_media)
         self.act_connect = make_action("Conectar.png", "Conectar", self.connect_nodes, "Conectar")
         self.act_delete = make_action("Excluir.png", "Excluir", self.delete_selected, "Excluir")
 
@@ -1200,10 +1198,15 @@ class AmareloMainWindow(QMainWindow):
     # --------------------------------------------------
     def new_window(self):
         """Abre uma nova janela completamente independente."""
+        print("DEBUG: new_window called")
         try:
             new_win = AmareloMainWindow()
             new_win.show()
+            new_win.raise_()
+            new_win.activateWindow()
+            print("DEBUG: new window created successfully")
         except Exception as e:
+            print(f"DEBUG: Exception in new_window: {e}")
             QMessageBox.critical(self, "Erro", f"Não foi possível abrir uma nova janela: {e}")
 
 
@@ -1241,7 +1244,7 @@ class AmareloMainWindow(QMainWindow):
         if len(sel) == 1 and isinstance(sel[0], (StyledNode, MediaItem)):
             source = sel[0]
             pos = source.pos() + QPointF(source.rect().width() + 20, 0)
-            node = StyledNode(pos.x(), pos.y(), brush=source.brush())
+            node = StyledNode(pos.x(), pos.y())
             self.undo_stack.push(AddItemCommand(self.scene, node, "Adicionar objeto", self))
             connection = SmartConnection(source, node)
             self.undo_stack.push(AddItemCommand(self.scene, connection, "Conectar objeto", self))
@@ -1376,11 +1379,9 @@ class AmareloMainWindow(QMainWindow):
         if not target_node:
             return
 
-        # CAPTURAR INFORMAÇÕES DA SELEÇÃO ANTES DO DIÁLOGO
+        # Verificar se há seleção de texto
         cursor = target_node.text.textCursor()
         has_text_selection = cursor.hasSelection()
-        selection_start = cursor.selectionStart()
-        selection_end = cursor.selectionEnd()
         
         # Abrir diálogo
         result = QFontDialog.getFont(target_node.text.font(), self)
@@ -1389,17 +1390,18 @@ class AmareloMainWindow(QMainWindow):
         if not isinstance(result, tuple) or len(result) != 2:
             return
         
-        ok, font = result  # ORDEM CORRETA: (ok, font)
+        ok, font = result
         
         if not ok or not isinstance(font, QFont):
             return
-
+        
         # Guardar HTML antes
         old_html = target_node.text.document().toHtml()
         
         if has_text_selection:
             # Aplicar apenas ao texto selecionado
-            cursor = target_node.text.textCursor()
+            selection_start = cursor.selectionStart()
+            selection_end = cursor.selectionEnd()
             cursor.setPosition(selection_start)
             cursor.setPosition(selection_end, QTextCursor.KeepAnchor)
             
@@ -1411,7 +1413,7 @@ class AmareloMainWindow(QMainWindow):
             # Atualizar o cursor do texto
             target_node.text.setTextCursor(cursor)
         else:
-            # Aplicar a toda a fonte do nó
+            # Aplicar a toda a fonte do nó (objeto selecionado sem seleção de texto)
             target_node.text.setFont(font)
         
         # Guardar HTML depois
