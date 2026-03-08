@@ -173,9 +173,21 @@ class MoveItemCommand(QUndoCommand):
 
     def redo(self):
         self.item.setPos(self.new_pos)
+        self._update_connections()
 
     def undo(self):
         self.item.setPos(self.old_pos)
+        self._update_connections()
+    
+    def _update_connections(self):
+        if self.item.scene():
+            try:
+                from core.connection import SmartConnection
+                for conn in self.item.scene().items():
+                    if isinstance(conn, SmartConnection) and (conn.source == self.item or conn.target == self.item):
+                        conn.update_path()
+            except:
+                pass
 
 class ReplaceMediaCommand(QUndoCommand):
     """Comando para substituir um item de mídia por outro"""
@@ -512,6 +524,14 @@ class InfiniteCanvas(QGraphicsView):
             if not self._is_dragging:
                 for item, original_pos in self._item_positions.items():
                     item.setPos(original_pos)
+            else:
+                # Rastrear movimento para undo/redo
+                main_window = QApplication.activeWindow()
+                if hasattr(main_window, 'undo_stack'):
+                    for item, original_pos in self._item_positions.items():
+                        if item.isSelected() and item.pos() != original_pos:
+                            cmd = MoveItemCommand(item, original_pos, item.pos(), "Mover objeto")
+                            main_window.undo_stack.push(cmd)
             
             # Resetar estado de drag
             self._dragging_item = None
