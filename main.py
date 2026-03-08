@@ -729,6 +729,7 @@ class AmareloMainWindow(QMainWindow):
             "Copiar": "Ctrl+C",
             "Colar": "Ctrl+V",
             "Adicionar": "+",
+            "Mídia": "",
             "Conectar": "C",
             "Excluir": "Delete",
             "Fonte": "",
@@ -854,6 +855,7 @@ class AmareloMainWindow(QMainWindow):
         tb.addSeparator()
 
         self.act_add = make_action("Adicionar.png", "Adicionar objeto", self.add_object, "Adicionar")
+        self.act_media = make_action("Midia.png", "Mídia", self.insert_media)
         self.act_connect = make_action("Conectar.png", "Conectar", self.connect_nodes, "Conectar")
         self.act_delete = make_action("Excluir.png", "Excluir", self.delete_selected, "Excluir")
 
