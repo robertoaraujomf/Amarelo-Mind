@@ -398,6 +398,90 @@ class InfiniteCanvas(QGraphicsView):
             
             # Mover TODOS os itens selecionados
             delta = current_pos - self._drag_start_pos
+            
+            # Verificar snapping de alinhamento
+            snap_threshold = 10  # pixels para ativar snapping
+            snap_tolerance = 3   # tolerância mínima para quebrar o snap
+            
+            # Primeiro, calcular a posição proposta
+            new_item_pos = None
+            for item, original_pos in self._item_positions.items():
+                if item.isSelected():
+                    new_item_pos = original_pos + delta
+                    break
+            
+            # Se temos um item para mover, verificar alinhamento
+            if new_item_pos:
+                moving_rect = self._dragging_item.sceneBoundingRect()
+                moving_left = moving_rect.left()
+                moving_right = moving_rect.right()
+                moving_top = moving_rect.top()
+                moving_bottom = moving_rect.bottom()
+                moving_center_x = moving_rect.center().x()
+                moving_center_y = moving_rect.center().y()
+                
+                # Verificar alinhamento com outros itens
+                snapped = False
+                snap_offset = QPointF(0, 0)
+                
+                for item in self.scene().items():
+                    if item == self._dragging_item or not hasattr(item, 'sceneBoundingRect'):
+                        continue
+                    
+                    other_rect = item.sceneBoundingRect()
+                    other_left = other_rect.left()
+                    other_right = other_rect.right()
+                    other_top = other_rect.top()
+                    other_bottom = other_rect.bottom()
+                    other_center_x = other_rect.center().x()
+                    other_center_y = other_rect.center().y()
+                    
+                    # Verificar alinhamento vertical (esquerda)
+                    if abs(moving_left - other_left) < snap_threshold:
+                        offset = moving_left - other_left
+                        if abs(offset) < snap_tolerance:
+                            snap_offset.setX(snap_offset.x() - offset)
+                            snapped = True
+                    
+                    # Verificar alinhamento vertical (direita)
+                    if abs(moving_right - other_right) < snap_threshold:
+                        offset = moving_right - other_right
+                        if abs(offset) < snap_tolerance:
+                            snap_offset.setX(snap_offset.x() - offset)
+                            snapped = True
+                    
+                    # Verificar alinhamento vertical (centro)
+                    if abs(moving_center_x - other_center_x) < snap_threshold:
+                        offset = moving_center_x - other_center_x
+                        if abs(offset) < snap_tolerance:
+                            snap_offset.setX(snap_offset.x() - offset)
+                            snapped = True
+                    
+                    # Verificar alinhamento horizontal (topo)
+                    if abs(moving_top - other_top) < snap_threshold:
+                        offset = moving_top - other_top
+                        if abs(offset) < snap_tolerance:
+                            snap_offset.setY(snap_offset.y() - offset)
+                            snapped = True
+                    
+                    # Verificar alinhamento horizontal (base)
+                    if abs(moving_bottom - other_bottom) < snap_threshold:
+                        offset = moving_bottom - other_bottom
+                        if abs(offset) < snap_tolerance:
+                            snap_offset.setY(snap_offset.y() - offset)
+                            snapped = True
+                    
+                    # Verificar alinhamento horizontal (centro)
+                    if abs(moving_center_y - other_center_y) < snap_threshold:
+                        offset = moving_center_y - other_center_y
+                        if abs(offset) < snap_tolerance:
+                            snap_offset.setY(snap_offset.y() - offset)
+                            snapped = True
+                
+                # Aplicar snapping se alinhado
+                if snapped and (abs(snap_offset.x()) > 0 or abs(snap_offset.y()) > 0):
+                    delta = delta + snap_offset
+            
             for item, original_pos in self._item_positions.items():
                 if item.isSelected():
                     new_pos = original_pos + delta
@@ -1198,16 +1282,8 @@ class AmareloMainWindow(QMainWindow):
     # --------------------------------------------------
     def new_window(self):
         """Abre uma nova janela completamente independente."""
-        print("DEBUG: new_window called")
-        try:
-            new_win = AmareloMainWindow()
-            new_win.show()
-            new_win.raise_()
-            new_win.activateWindow()
-            print("DEBUG: new window created successfully")
-        except Exception as e:
-            print(f"DEBUG: Exception in new_window: {e}")
-            QMessageBox.critical(self, "Erro", f"Não foi possível abrir uma nova janela: {e}")
+        from PySide6.QtCore import QProcess
+        QProcess.startDetached(sys.executable, [__file__])
 
 
     def set_node_style(self, style_type):
