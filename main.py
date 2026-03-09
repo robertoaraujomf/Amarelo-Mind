@@ -739,6 +739,7 @@ class AmareloMainWindow(QMainWindow):
             "Fonte": "",
             "Cores": "",
             "Localizar": "Ctrl+F",
+            "Reexibir": "Esc",
         }
         
         self.load_shortcuts_from_file()
@@ -917,6 +918,11 @@ class AmareloMainWindow(QMainWindow):
     # --------------------------------------------------
     def _activate_focus_mode(self, selected_node):
         """Ativa modo foco - mostra apenas o nó selecionado e suas conexões"""
+        # Não ativar se Ctrl está pressionado
+        modifiers = QApplication.keyboardModifiers()
+        if modifiers & Qt.ControlModifier:
+            return
+        
         if self.focus_mode_enabled:
             return
         
@@ -925,12 +931,16 @@ class AmareloMainWindow(QMainWindow):
         
         # Encontrar nós conectados
         connected_nodes = {selected_node}
+        connected_connections = set()
+        
         for conn in self.scene.items():
             if isinstance(conn, SmartConnection):
                 if conn.source == selected_node:
                     connected_nodes.add(conn.target)
+                    connected_connections.add(conn)
                 elif conn.target == selected_node:
                     connected_nodes.add(conn.source)
+                    connected_connections.add(conn)
         
         # Ocultar nós não conectados
         for item in self.scene.items():
@@ -938,6 +948,13 @@ class AmareloMainWindow(QMainWindow):
                 if item.isVisible():
                     item.setVisible(False)
                     self.focus_mode_hidden_items.append(item)
+        
+        # Ocultar conexões não conectadas ao nó selecionado
+        for conn in self.scene.items():
+            if isinstance(conn, SmartConnection) and conn not in connected_connections:
+                if conn.isVisible():
+                    conn.setVisible(False)
+                    self.focus_mode_hidden_items.append(conn)
     
     def _deactivate_focus_mode(self):
         """Desativa modo foco - mostra todos os itens ocultos"""
@@ -958,9 +975,13 @@ class AmareloMainWindow(QMainWindow):
         except RuntimeError:
             return
         
+        # Não ativar focus mode se Ctrl está pressionado
+        modifiers = QApplication.keyboardModifiers()
+        ctrl_pressed = bool(modifiers & Qt.ControlModifier)
+        
         # Se há exatamente um nó selecionado, selecionar também suas conexões
         styled_nodes = [item for item in sel if isinstance(item, StyledNode)]
-        if len(styled_nodes) == 1:
+        if len(styled_nodes) == 1 and not ctrl_pressed:
             node = styled_nodes[0]
             for conn in self.scene.items():
                 if isinstance(conn, SmartConnection) and (conn.source == node or conn.target == node):
@@ -1421,6 +1442,14 @@ class AmareloMainWindow(QMainWindow):
     # --------------------------------------------------
     def keyPressEvent(self, event):
         """Manipula eventos de teclado para movimento dos objetos selecionados"""
+        
+        # ESC - reexibir objetos ocultos
+        if event.key() == Qt.Key_Escape:
+            self._deactivate_focus_mode()
+            self.scene.clearSelection()
+            event.accept()
+            return
+        
         selected_items = [item for item in self.scene.selectedItems() if isinstance(item, (StyledNode, MediaItem))]
         
         if not selected_items:
@@ -2034,7 +2063,7 @@ class AmareloMainWindow(QMainWindow):
         all_buttons = [
             "Novo", "Abrir", "Salvar", "Exportar", "Desfazer", "Refazer",
             "Copiar", "Colar", "Adicionar", "Mídia", "Conectar", "Excluir",
-            "Fonte", "Cores", "Localizar"
+            "Fonte", "Cores", "Localizar", "Reexibir"
         ]
         
         dialog = QDialog(self)
