@@ -768,13 +768,27 @@ class AmareloMainWindow(QMainWindow):
             self.autosave_timer.stop()
             self.autosave_timer.start()
     
-    def toggle_autosave(self, checked):
-        """Alterna salvamento automático"""
+    def on_autosave_toggled(self, checked):
+        """Alterna salvamento automático quando o botão Salvar é clicado"""
         self.autosave_enabled = checked
         if checked:
             self.autosave_timer.start()
         else:
             self.autosave_timer.stop()
+    
+    def on_toolbar_context_menu(self, pos):
+        """Handle right-click on toolbar to toggle autosave"""
+        tb = self.findChild(QToolBar)
+        if tb:
+            action = tb.actionAt(pos)
+            if action == self.act_save:
+                # Toggle autosave on right-click
+                self.autosave_enabled = not self.autosave_enabled
+                self.act_save.setChecked(self.autosave_enabled)
+                if self.autosave_enabled:
+                    self.autosave_timer.start()
+                else:
+                    self.autosave_timer.stop()
     
     def _autosave(self):
         """Executa autosave se houver mudanças e arquivo estiver salvo"""
@@ -824,6 +838,8 @@ class AmareloMainWindow(QMainWindow):
         tb = QToolBar()
         tb.setIconSize(QSize(40, 40))
         tb.setToolButtonStyle(Qt.ToolButtonIconOnly)
+        tb.setContextMenuPolicy(Qt.CustomContextMenu)
+        tb.customContextMenuRequested.connect(self.on_toolbar_context_menu)
         self.addToolBar(tb)
 
         def make_action(icon, tooltip, slot, shortcut_key=None):
@@ -838,15 +854,15 @@ class AmareloMainWindow(QMainWindow):
 
         self.act_new = make_action("Novo.png", "Novo mapa mental", self.new_window, "Novo")
         self.act_open = make_action("Abrir.png", "Abrir mapa mental", self.open_project, "Abrir")
-        self.act_save = make_action("Salvar.png", "Salvar alterações", self.save_project, "Salvar")
         
-        # Checkbox para autosave
-        self.act_autosave = QAction("Auto-salvar", self)
-        self.act_autosave.setCheckable(True)
-        self.act_autosave.setChecked(False)
-        self.act_autosave.setToolTip("Habilitar salvamento automático")
-        self.act_autosave.triggered.connect(self.toggle_autosave)
-        tb.addAction(self.act_autosave)
+        # Save button com suporte a right-click para toggle autosave
+        self.act_save = QAction(IconManager.load_icon("Salvar.png", "S"), "", self)
+        self.act_save.setToolTip("Salvar alterações (botão direito: alternar auto-salvar)")
+        self.act_save.setShortcut(self.custom_shortcuts.get("Salvar", ""))
+        self.act_save.setCheckable(True)
+        self.act_save.triggered.connect(self.save_project)
+        self.act_save.toggled.connect(self.on_autosave_toggled)
+        tb.addAction(self.act_save)
         
         self.act_export = make_action("Exportar.png", "Exportar como imagem", self.export_png)
 
@@ -905,8 +921,17 @@ class AmareloMainWindow(QMainWindow):
             sel = self.scene.selectedItems()
         except RuntimeError:
             return
-
-        has_sel = bool(sel)
+        
+        # Se há exatamente um nó selecionado, selecionar também suas conexões
+        styled_nodes = [item for item in sel if isinstance(item, StyledNode)]
+        if len(styled_nodes) == 1:
+            node = styled_nodes[0]
+            for conn in self.scene.items():
+                if isinstance(conn, SmartConnection) and (conn.source == node or conn.target == node):
+                    if not conn.isSelected():
+                        conn.setSelected(True)
+        
+        has_sel = bool(self.scene.selectedItems())
         has_items = bool(self.scene.items())
         
         # Verificar se há um nó selecionado
