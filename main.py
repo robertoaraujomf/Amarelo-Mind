@@ -464,9 +464,9 @@ class InfiniteCanvas(QGraphicsView):
             # Mover TODOS os itens selecionados
             delta = current_pos - self._drag_start_pos
             
-            # Verificar snapping de alinhamento
-            snap_threshold = 25  # pixels para ativar snapping (aumentado para ser mais perceptível)
-            snap_tolerance = 15   # tolerância mínima para quebrar o snap (aumentado)
+            # Verificar snapping de alinhamento - valores menores para movimento mais suave
+            snap_threshold = 8   # pixels para ativar snapping
+            snap_tolerance = 5   # tolerância mínima para quebrar o snap
             
             # Primeiro, calcular a posição proposta
             new_item_pos = None
@@ -703,6 +703,10 @@ class AmareloMainWindow(QMainWindow):
         self.autosave_timer.setInterval(2000)  # Auto-save a cada 2 segundos
         self.autosave_timer.start()
         
+        # Focus mode - when single object selected, hide others
+        self.focus_mode_enabled = False
+        self.focus_mode_hidden_items = []
+        
         # Conectar sinais para detectar mudanças
         self.undo_stack.indexChanged.connect(self._on_undo_stack_changed)
         self._last_autosave_index = 0
@@ -768,14 +772,6 @@ class AmareloMainWindow(QMainWindow):
             self.autosave_timer.stop()
             self.autosave_timer.start()
     
-    def on_autosave_toggled(self, checked):
-        """Alterna salvamento automático quando o botão Salvar é clicado"""
-        self.autosave_enabled = checked
-        if checked:
-            self.autosave_timer.start()
-        else:
-            self.autosave_timer.stop()
-    
     def on_toolbar_context_menu(self, pos):
         """Handle right-click on toolbar to toggle autosave"""
         tb = self.findChild(QToolBar)
@@ -789,6 +785,11 @@ class AmareloMainWindow(QMainWindow):
                     self.autosave_timer.start()
                 else:
                     self.autosave_timer.stop()
+    
+    def on_save_triggered(self, checked):
+        """Handle left-click on Save button - just save normally"""
+        # This is called for left-click, just do normal save
+        self.save_project()
     
     def _autosave(self):
         """Executa autosave se houver mudanças e arquivo estiver salvo"""
@@ -859,9 +860,7 @@ class AmareloMainWindow(QMainWindow):
         self.act_save = QAction(IconManager.load_icon("Salvar.png", "S"), "", self)
         self.act_save.setToolTip("Salvar alterações (botão direito: alternar auto-salvar)")
         self.act_save.setShortcut(self.custom_shortcuts.get("Salvar", ""))
-        self.act_save.setCheckable(True)
-        self.act_save.triggered.connect(self.save_project)
-        self.act_save.toggled.connect(self.on_autosave_toggled)
+        self.act_save.triggered.connect(self.on_save_triggered)
         tb.addAction(self.act_save)
         
         self.act_export = make_action("Exportar.png", "Exportar como imagem", self.export_png)
@@ -914,6 +913,43 @@ class AmareloMainWindow(QMainWindow):
         make_action("Sobre.png", "Sobre o App", self.show_about_dialog)
 
     # --------------------------------------------------
+    # FOCUS MODE
+    # --------------------------------------------------
+    def _activate_focus_mode(self, selected_node):
+        """Ativa modo foco - mostra apenas o nó selecionado e suas conexões"""
+        if self.focus_mode_enabled:
+            return
+        
+        self.focus_mode_enabled = True
+        self.focus_mode_hidden_items = []
+        
+        # Encontrar nós conectados
+        connected_nodes = {selected_node}
+        for conn in self.scene.items():
+            if isinstance(conn, SmartConnection):
+                if conn.source == selected_node:
+                    connected_nodes.add(conn.target)
+                elif conn.target == selected_node:
+                    connected_nodes.add(conn.source)
+        
+        # Ocultar nós não conectados
+        for item in self.scene.items():
+            if isinstance(item, (StyledNode, MediaItem)) and item not in connected_nodes:
+                if item.isVisible():
+                    item.setVisible(False)
+                    self.focus_mode_hidden_items.append(item)
+    
+    def _deactivate_focus_mode(self):
+        """Desativa modo foco - mostra todos os itens ocultos"""
+        if not self.focus_mode_enabled:
+            return
+        
+        self.focus_mode_enabled = False
+        for item in self.focus_mode_hidden_items:
+            item.setVisible(True)
+        self.focus_mode_hidden_items = []
+    
+    # --------------------------------------------------
     # ESTADOS
     # --------------------------------------------------
     def update_button_states(self):
@@ -930,6 +966,11 @@ class AmareloMainWindow(QMainWindow):
                 if isinstance(conn, SmartConnection) and (conn.source == node or conn.target == node):
                     if not conn.isSelected():
                         conn.setSelected(True)
+            # Ativar modo foco - mostrar apenas nó e suas conexões
+            self._activate_focus_mode(node)
+        elif len(styled_nodes) == 0 and not sel:
+            # Nenhum nó selecionado - desativar modo foco
+            self._deactivate_focus_mode()
         
         has_sel = bool(self.scene.selectedItems())
         has_items = bool(self.scene.items())
