@@ -358,6 +358,7 @@ class InfiniteCanvas(QGraphicsView):
         # BOTÃO DIREITO: Seleção retangular
         if event.button() == Qt.RightButton:
             # Inicia seleção retangular com o botão direito
+            self._rectangular_selection_active = True
             self.setDragMode(QGraphicsView.RubberBandDrag)
             super().mousePressEvent(event)
             return
@@ -586,6 +587,7 @@ class InfiniteCanvas(QGraphicsView):
         if event.button() == Qt.RightButton and self.dragMode() == QGraphicsView.RubberBandDrag:
             # Resetar para modo de seleção padrão após seleção retangular
             self.setDragMode(QGraphicsView.NoDrag)
+            self._rectangular_selection_active = False
         
         # Se estava arrastando um item
         if self._dragging_item and event.button() == Qt.LeftButton:
@@ -706,6 +708,7 @@ class AmareloMainWindow(QMainWindow):
         # Focus mode - when single object selected, hide others
         self.focus_mode_enabled = False
         self.focus_mode_hidden_items = []
+        self._rectangular_selection_active = False
         
         # Conectar sinais para detectar mudanças
         self.undo_stack.indexChanged.connect(self._on_undo_stack_changed)
@@ -918,9 +921,9 @@ class AmareloMainWindow(QMainWindow):
     # --------------------------------------------------
     def _activate_focus_mode(self, selected_node):
         """Ativa modo foco - mostra apenas o nó selecionado e suas conexões"""
-        # Não ativar se Ctrl está pressionado
+        # Não ativar se Ctrl está pressionado ou se está fazendo seleção retangular
         modifiers = QApplication.keyboardModifiers()
-        if modifiers & Qt.ControlModifier:
+        if modifiers & Qt.ControlModifier or self._rectangular_selection_active:
             return
         
         if self.focus_mode_enabled:
@@ -975,13 +978,14 @@ class AmareloMainWindow(QMainWindow):
         except RuntimeError:
             return
         
-        # Não ativar focus mode se Ctrl está pressionado
+        # Não ativar focus mode se Ctrl está pressionado ou seleção retangular
         modifiers = QApplication.keyboardModifiers()
         ctrl_pressed = bool(modifiers & Qt.ControlModifier)
+        rectangular_sel = getattr(self, '_rectangular_selection_active', False)
         
         # Se há exatamente um nó selecionado, selecionar também suas conexões
         styled_nodes = [item for item in sel if isinstance(item, StyledNode)]
-        if len(styled_nodes) == 1 and not ctrl_pressed:
+        if len(styled_nodes) == 1 and not ctrl_pressed and not rectangular_sel:
             node = styled_nodes[0]
             for conn in self.scene.items():
                 if isinstance(conn, SmartConnection) and (conn.source == node or conn.target == node):
