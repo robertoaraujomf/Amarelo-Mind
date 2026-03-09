@@ -337,13 +337,18 @@ class InfiniteCanvas(QGraphicsView):
             return
         
         if not isinstance(item_clicked, (StyledNode, Handle)):
-            # Clicou fora de qualquer item útil, limpar seleção de texto
+            # Clicou fora de qualquer item útil
+            # Limpar seleção de texto
             for item in self.scene().items():
                 if isinstance(item, StyledNode):
                     cursor = item.text.textCursor()
                     if cursor.hasSelection():
                         cursor.clearSelection()
                         item.text.setTextCursor(cursor)
+            # Reexibir objetos ocultos ao clicar em espaço vazio
+            main_window = QApplication.activeWindow()
+            if hasattr(main_window, 'reveal_all_items'):
+                main_window.reveal_all_items()
         
         # Verificar se clicou em uma conexão para iniciar drag
         if isinstance(item_clicked, SmartConnection):
@@ -358,7 +363,6 @@ class InfiniteCanvas(QGraphicsView):
         # BOTÃO DIREITO: Seleção retangular
         if event.button() == Qt.RightButton:
             # Inicia seleção retangular com o botão direito
-            self._rectangular_selection_active = True
             self.setDragMode(QGraphicsView.RubberBandDrag)
             super().mousePressEvent(event)
             return
@@ -587,7 +591,6 @@ class InfiniteCanvas(QGraphicsView):
         if event.button() == Qt.RightButton and self.dragMode() == QGraphicsView.RubberBandDrag:
             # Resetar para modo de seleção padrão após seleção retangular
             self.setDragMode(QGraphicsView.NoDrag)
-            self._rectangular_selection_active = False
         
         # Se estava arrastando um item
         if self._dragging_item and event.button() == Qt.LeftButton:
@@ -705,10 +708,9 @@ class AmareloMainWindow(QMainWindow):
         self.autosave_timer.setInterval(2000)  # Auto-save a cada 2 segundos
         self.autosave_timer.start()
         
-        # Focus mode - when single object selected, hide others
-        self.focus_mode_enabled = False
-        self.focus_mode_hidden_items = []
-        self._rectangular_selection_active = False
+        # Hide mode - controlled by button
+        self.hide_mode_active = False
+        self.hide_mode_hidden_items = []
         
         # Conectar sinais para detectar mudanças
         self.undo_stack.indexChanged.connect(self._on_undo_stack_changed)
@@ -742,7 +744,7 @@ class AmareloMainWindow(QMainWindow):
             "Fonte": "",
             "Cores": "",
             "Localizar": "Ctrl+F",
-            "Reexibir": "Esc",
+            "Ocultar": "Ctrl+O",
         }
         
         self.load_shortcuts_from_file()
@@ -893,6 +895,10 @@ class AmareloMainWindow(QMainWindow):
         self.act_add = make_action("Adicionar.png", "Adicionar objeto", self.add_object, "Adicionar")
         self.act_media = make_action("Midia.png", "Mídia", self.insert_media)
         self.act_connect = make_action("Conectar.png", "Conectar", self.connect_nodes, "Conectar")
+        
+        # Botão ocultar/reexibir
+        self.act_hide = make_action("Ocultar.png", "Ocultar ou reexibir objetos", self.toggle_hide_mode, "Ocultar")
+        
         self.act_delete = make_action("Excluir.png", "Excluir", self.delete_selected, "Excluir")
 
         tb.addSeparator()
@@ -917,57 +923,62 @@ class AmareloMainWindow(QMainWindow):
         make_action("Sobre.png", "Sobre o App", self.show_about_dialog)
 
     # --------------------------------------------------
-    # FOCUS MODE
+    # HIDE MODE
     # --------------------------------------------------
-    def _activate_focus_mode(self, selected_node):
-        """Ativa modo foco - mostra apenas o nó selecionado e suas conexões"""
-        # Não ativar se Ctrl está pressionado ou se está fazendo seleção retangular
-        modifiers = QApplication.keyboardModifiers()
-        if modifiers & Qt.ControlModifier or self._rectangular_selection_active:
-            return
-        
-        if self.focus_mode_enabled:
-            return
-        
-        self.focus_mode_enabled = True
-        self.focus_mode_hidden_items = []
-        
-        # Encontrar nós conectados
-        connected_nodes = {selected_node}
-        connected_connections = set()
-        
-        for conn in self.scene.items():
-            if isinstance(conn, SmartConnection):
-                if conn.source == selected_node:
-                    connected_nodes.add(conn.target)
-                    connected_connections.add(conn)
-                elif conn.target == selected_node:
-                    connected_nodes.add(conn.source)
-                    connected_connections.add(conn)
-        
-        # Ocultar nós não conectados
-        for item in self.scene.items():
-            if isinstance(item, (StyledNode, MediaItem)) and item not in connected_nodes:
-                if item.isVisible():
-                    item.setVisible(False)
-                    self.focus_mode_hidden_items.append(item)
-        
-        # Ocultar conexões não conectadas ao nó selecionado
-        for conn in self.scene.items():
-            if isinstance(conn, SmartConnection) and conn not in connected_connections:
-                if conn.isVisible():
-                    conn.setVisible(False)
-                    self.focus_mode_hidden_items.append(conn)
+    def toggle_hide_mode(self):
+        """Alterna modo de ocultar/reexibir objetos"""
+        if self.hide_mode_active:
+            # Reexibir todos os objetos ocultos
+            self.hide_mode_active = False
+            for item in self.hide_mode_hidden_items:
+                item.setVisible(True)
+            self.hide_mode_hidden_items = []
+        else:
+            # Ocultar objetos não conectados ao selecionado
+            sel = self.scene.selectedItems()
+            styled_nodes = [item for item in sel if isinstance(item, StyledNode)]
+            
+            if len(styled_nodes) != 1:
+                return
+            
+            selected_node = styled_nodes[0]
+            self.hide_mode_active = True
+            self.hide_mode_hidden_items = []
+            
+            # Encontrar nós conectados
+            connected_nodes = {selected_node}
+            connected_connections = set()
+            
+            for conn in self.scene.items():
+                if isinstance(conn, SmartConnection):
+                    if conn.source == selected_node:
+                        connected_nodes.add(conn.target)
+                        connected_connections.add(conn)
+                    elif conn.target == selected_node:
+                        connected_nodes.add(conn.source)
+                        connected_connections.add(conn)
+            
+            # Ocultar nós não conectados
+            for item in self.scene.items():
+                if isinstance(item, (StyledNode, MediaItem)) and item not in connected_nodes:
+                    if item.isVisible():
+                        item.setVisible(False)
+                        self.hide_mode_hidden_items.append(item)
+            
+            # Ocultar conexões não conectadas ao nó selecionado
+            for conn in self.scene.items():
+                if isinstance(conn, SmartConnection) and conn not in connected_connections:
+                    if conn.isVisible():
+                        conn.setVisible(False)
+                        self.hide_mode_hidden_items.append(conn)
     
-    def _deactivate_focus_mode(self):
-        """Desativa modo foco - mostra todos os itens ocultos"""
-        if not self.focus_mode_enabled:
-            return
-        
-        self.focus_mode_enabled = False
-        for item in self.focus_mode_hidden_items:
-            item.setVisible(True)
-        self.focus_mode_hidden_items = []
+    def reveal_all_items(self):
+        """Reexibe todos os objetos ocultos"""
+        if self.hide_mode_active:
+            self.hide_mode_active = False
+            for item in self.hide_mode_hidden_items:
+                item.setVisible(True)
+            self.hide_mode_hidden_items = []
     
     # --------------------------------------------------
     # ESTADOS
@@ -978,24 +989,18 @@ class AmareloMainWindow(QMainWindow):
         except RuntimeError:
             return
         
-        # Não ativar focus mode se Ctrl está pressionado ou seleção retangular
-        modifiers = QApplication.keyboardModifiers()
-        ctrl_pressed = bool(modifiers & Qt.ControlModifier)
-        rectangular_sel = getattr(self, '_rectangular_selection_active', False)
-        
         # Se há exatamente um nó selecionado, selecionar também suas conexões
         styled_nodes = [item for item in sel if isinstance(item, StyledNode)]
-        if len(styled_nodes) == 1 and not ctrl_pressed and not rectangular_sel:
+        if len(styled_nodes) == 1:
             node = styled_nodes[0]
             for conn in self.scene.items():
                 if isinstance(conn, SmartConnection) and (conn.source == node or conn.target == node):
                     if not conn.isSelected():
                         conn.setSelected(True)
-            # Ativar modo foco - mostrar apenas nó e suas conexões
-            self._activate_focus_mode(node)
-        elif len(styled_nodes) == 0 and not sel:
-            # Nenhum nó selecionado - desativar modo foco
-            self._deactivate_focus_mode()
+        
+        # Habilitar/desabilitar botão ocultar
+        if hasattr(self, 'act_hide'):
+            self.act_hide.setEnabled(len(styled_nodes) == 1)
         
         has_sel = bool(self.scene.selectedItems())
         has_items = bool(self.scene.items())
@@ -1446,13 +1451,6 @@ class AmareloMainWindow(QMainWindow):
     # --------------------------------------------------
     def keyPressEvent(self, event):
         """Manipula eventos de teclado para movimento dos objetos selecionados"""
-        
-        # ESC - reexibir objetos ocultos
-        if event.key() == Qt.Key_Escape:
-            self._deactivate_focus_mode()
-            self.scene.clearSelection()
-            event.accept()
-            return
         
         selected_items = [item for item in self.scene.selectedItems() if isinstance(item, (StyledNode, MediaItem))]
         
@@ -2067,7 +2065,7 @@ class AmareloMainWindow(QMainWindow):
         all_buttons = [
             "Novo", "Abrir", "Salvar", "Exportar", "Desfazer", "Refazer",
             "Copiar", "Colar", "Adicionar", "Mídia", "Conectar", "Excluir",
-            "Fonte", "Cores", "Localizar", "Reexibir"
+            "Fonte", "Cores", "Localizar", "Ocultar"
         ]
         
         dialog = QDialog(self)
