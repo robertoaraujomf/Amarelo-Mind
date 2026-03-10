@@ -2064,8 +2064,8 @@ class AmareloMainWindow(QMainWindow):
         
         all_buttons = [
             "Novo", "Abrir", "Salvar", "Exportar", "Desfazer", "Refazer",
-            "Copiar", "Colar", "Adicionar", "Mídia", "Conectar", "Excluir",
-            "Fonte", "Cores", "Localizar", "Ocultar"
+            "Copiar", "Colar", "Adicionar", "Mídia", "Conectar", "Ocultar",
+            "Excluir", "Fonte", "Cores", "Localizar"
         ]
         
         dialog = QDialog(self)
