@@ -123,9 +123,12 @@ class AddItemCommand(QUndoCommand):
 
     def redo(self):
         self.scene.addItem(self.item)
-        if self.window and isinstance(self.item, StyledNode):
+        if isinstance(self.item, StyledNode) and self.window:
             if hasattr(self.item.text, 'selectionChanged'):
                 self.item.text.selectionChanged.connect(self.window.update_button_states)
+        # Se for uma conexão, atualizar o caminho
+        if hasattr(self.item, 'update_path'):
+            self.item.update_path()
 
     def undo(self):
         self.scene.removeItem(self.item)
@@ -469,9 +472,9 @@ class InfiniteCanvas(QGraphicsView):
             # Mover TODOS os itens selecionados
             delta = current_pos - self._drag_start_pos
             
-            # Verificar snapping de alinhamento - valores menores para movimento mais suave
-            snap_threshold = 8   # pixels para ativar snapping
-            snap_tolerance = 5   # tolerância mínima para quebrar o snap
+            # Verificar snapping de alinhamento - valores pequenos para movimento suave
+            snap_threshold = 3   # pixels para ativar snapping
+            snap_tolerance = 2   # tolerância mínima para quebrar o snap
             
             # Primeiro, calcular a posição proposta
             new_item_pos = None
@@ -555,6 +558,7 @@ class InfiniteCanvas(QGraphicsView):
             for item, original_pos in self._item_positions.items():
                 if item.isSelected():
                     new_pos = original_pos + delta
+                    item.prepareGeometryChange()
                     item.setPos(new_pos)
             
             # Atualizar conexões para todos os itens movidos
@@ -565,6 +569,7 @@ class InfiniteCanvas(QGraphicsView):
                         for conn in item.scene().items():
                             if isinstance(conn, SmartConnection) and (conn.source == item or conn.target == item):
                                 conn.update_path()
+                                conn.update()
             except:
                 pass
             
@@ -753,6 +758,7 @@ class AmareloMainWindow(QMainWindow):
         self.setup_toolbar()
 
         self.scene.selectionChanged.connect(self.update_button_states)
+        self.scene.changed.connect(self.update_button_states)
         # Conecta sinais de seleção de texto em itens existentes
         self._connect_text_signals()
         self.update_button_states()
@@ -778,28 +784,9 @@ class AmareloMainWindow(QMainWindow):
             self.autosave_timer.stop()
             self.autosave_timer.start()
     
-    def on_toolbar_context_menu(self, pos):
-        """Handle right-click on toolbar to toggle autosave"""
-        tb = self.findChild(QToolBar)
-        if tb:
-            action = tb.actionAt(pos)
-            if action == self.act_save:
-                # Toggle autosave on right-click
-                self.autosave_enabled = not self.autosave_enabled
-                self.act_save.setChecked(self.autosave_enabled)
-                if self.autosave_enabled:
-                    self.autosave_timer.start()
-                else:
-                    self.autosave_timer.stop()
-    
-    def on_save_triggered(self, checked):
-        """Handle left-click on Save button - just save normally"""
-        # This is called for left-click, just do normal save
-        self.save_project()
-    
     def _autosave(self):
-        """Executa autosave se houver mudanças e arquivo estiver salvo"""
-        if self.autosave_enabled and self.current_file and self.undo_stack.canUndo():
+        """Executa autosave se houver mudanças e arquivo existir"""
+        if self.current_file and self.undo_stack.canUndo():
             try:
                 self.persistence.save_to_file(self.current_file, self.scene)
                 self._update_window_title()  # Mostrar status de salvo
@@ -845,8 +832,6 @@ class AmareloMainWindow(QMainWindow):
         tb = QToolBar()
         tb.setIconSize(QSize(40, 40))
         tb.setToolButtonStyle(Qt.ToolButtonIconOnly)
-        tb.setContextMenuPolicy(Qt.CustomContextMenu)
-        tb.customContextMenuRequested.connect(self.on_toolbar_context_menu)
         self.addToolBar(tb)
 
         def make_action(icon, tooltip, slot, shortcut_key=None):
@@ -862,12 +847,8 @@ class AmareloMainWindow(QMainWindow):
         self.act_new = make_action("Novo.png", "Novo mapa mental", self.new_window, "Novo")
         self.act_open = make_action("Abrir.png", "Abrir mapa mental", self.open_project, "Abrir")
         
-        # Save button com suporte a right-click para toggle autosave
-        self.act_save = QAction(IconManager.load_icon("Salvar.png", "S"), "", self)
-        self.act_save.setToolTip("Salvar alterações (botão direito: alternar auto-salvar)")
-        self.act_save.setShortcut(self.custom_shortcuts.get("Salvar", ""))
-        self.act_save.triggered.connect(self.on_save_triggered)
-        tb.addAction(self.act_save)
+        # Save button - autosave always on after file is created
+        self.act_save = make_action("Salvar.png", "Salvar alterações", self.save_project, "Salvar")
         
         self.act_export = make_action("Exportar.png", "Exportar como imagem", self.export_png)
 
@@ -989,14 +970,7 @@ class AmareloMainWindow(QMainWindow):
         except RuntimeError:
             return
         
-        # Se há exatamente um nó selecionado, selecionar também suas conexões
         styled_nodes = [item for item in sel if isinstance(item, StyledNode)]
-        if len(styled_nodes) == 1:
-            node = styled_nodes[0]
-            for conn in self.scene.items():
-                if isinstance(conn, SmartConnection) and (conn.source == node or conn.target == node):
-                    if not conn.isSelected():
-                        conn.setSelected(True)
         
         # Habilitar/desabilitar botão ocultar
         if hasattr(self, 'act_hide'):
@@ -1452,6 +1426,12 @@ class AmareloMainWindow(QMainWindow):
     def keyPressEvent(self, event):
         """Manipula eventos de teclado para movimento dos objetos selecionados"""
         
+        # Tecla + para adicionar objeto
+        if event.key() == Qt.Key_Plus:
+            self.add_object()
+            event.accept()
+            return
+        
         selected_items = [item for item in self.scene.selectedItems() if isinstance(item, (StyledNode, MediaItem))]
         
         if not selected_items:
@@ -1568,6 +1548,8 @@ class AmareloMainWindow(QMainWindow):
             self.undo_stack.push(AddItemCommand(self.scene, node, "Adicionar objeto", self))
             connection = SmartConnection(source, node)
             self.undo_stack.push(AddItemCommand(self.scene, connection, "Conectar objeto", self))
+            # Forçar atualização do caminho da conexão
+            connection.update_path()
         else:
             pos = self.view.mapToScene(self.view.viewport().rect().center())
             node = StyledNode(pos.x(), pos.y())
@@ -1658,6 +1640,8 @@ class AmareloMainWindow(QMainWindow):
             if isinstance(parent, StyledNode):
                 old_html = parent.text.toHtml()
                 cursor = focus_item.textCursor()
+                # Limpar formato antes de colar para evitar realce branco
+                cursor.setCharFormat(QTextCharFormat())
                 cursor.insertText(text)
                 focus_item.setTextCursor(cursor)
                 new_html = parent.text.toHtml()
@@ -1672,6 +1656,8 @@ class AmareloMainWindow(QMainWindow):
         node = sel[0]
         old_html = node.text.toHtml()
         cursor = node.text.textCursor()
+        # Limpar formato antes de colar para evitar realce branco
+        cursor.setCharFormat(QTextCharFormat())
         cursor.insertText(text)
         node.text.setTextCursor(cursor)
         new_html = node.text.toHtml()
@@ -1835,6 +1821,22 @@ class AmareloMainWindow(QMainWindow):
             self._update_window_title()
         else:
             QMessageBox.critical(self, "Erro", "Falha ao salvar o projeto.")
+
+    def load_file(self, path):
+        """Carrega um arquivo passedo como argumento"""
+        if not path or not os.path.exists(path):
+            return False
+        
+        self.current_file = path
+        self.autosave_enabled = True
+        self._last_autosave_index = self.undo_stack.index()
+        
+        if self.persistence.load_from_file(path, self.scene, self):
+            self._update_window_title()
+            return True
+        else:
+            QMessageBox.critical(self, "Erro", f"Falha ao carregar o projeto: {os.path.basename(path)}")
+            return False
 
     def open_project(self):
         """Abre um ou mais projetos salvos"""

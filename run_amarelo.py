@@ -33,8 +33,23 @@ icon_path = os.path.join(base_dir, "assets", "icons", "App_icon.ico")
 if os.path.exists(icon_path):
     app.setWindowIcon(QIcon(icon_path))
 
+# Check if a file was passed as argument BEFORE creating window
+file_to_load = None
+if len(sys.argv) > 1:
+    file_path = sys.argv[1]
+    print(f"DEBUG: Received file argument: {file_path}")
+    if file_path.endswith('.amind') and os.path.exists(file_path):
+        file_to_load = file_path
+        print(f"DEBUG: Will load file: {file_to_load}")
+
 # Create and show main window
 window = main.AmareloMainWindow()
+
+# Load file if provided
+if file_to_load:
+    print(f"DEBUG: Calling load_file with: {file_to_load}")
+    window.load_file(file_to_load)
+
 window.show()
 
 sys.exit(app.exec())
