@@ -36,6 +36,8 @@ from items.media import MediaAVItem
 from items.media import MediaAVSliderItem
 import urllib.request
 
+from core.quiz import QuizManager
+
 
 # ======================================================
 # COMANDOS UNDO/REDO
@@ -675,6 +677,9 @@ class AmareloMainWindow(QMainWindow):
         # Gerenciador de persistência
         self.persistence = PersistenceManager()
         
+        # Gerenciador de quiz
+        self.quiz_manager = QuizManager()
+        
         # Autosave configuration
         self.autosave_enabled = False
         self.autosave_timer = QTimer()
@@ -861,6 +866,10 @@ class AmareloMainWindow(QMainWindow):
         self.act_colors = make_action("Cores.png", "Cores", self.change_colors)
 
         tb.addSeparator()
+
+        # Botão Quiz (Perguntas sobre o mapa)
+        self.act_quiz = make_action("Localizar.png", "Fazer perguntas sobre o mapa", self.show_quiz_dialog, "Localizar")
+        self.act_quiz.setIcon(IconManager.load_icon("Perguntar.png", "?"))
 
         tb.addSeparator()
 
@@ -2343,6 +2352,168 @@ class AmareloMainWindow(QMainWindow):
         close_btn = QPushButton("Fechar")
         close_btn.clicked.connect(dialog.accept)
         layout.addWidget(close_btn)
+        
+        dialog.exec()
+
+    # --------------------------------------------------
+    # QUIZ
+    # --------------------------------------------------
+    def show_quiz_dialog(self):
+        """Abre o diálogo de quiz interativo"""
+        from PySide6.QtWidgets import (
+            QDialog, QVBoxLayout, QHBoxLayout, QLabel, QPushButton,
+            QRadioButton, QButtonGroup, QWidget, QComboBox
+        )
+        from PySide6.QtCore import Qt
+        from PySide6.QtGui import QFont
+        
+        file_path = self.current_file if self.current_file else None
+        has_content = self.quiz_manager.analyze_scene(self.scene, file_path)
+        
+        if not has_content:
+            QMessageBox.information(
+                self, "Quiz",
+                "Crie conexões entre objetos no mapa mental para gerar perguntas de quiz."
+            )
+            return
+        
+        dialog = QDialog(self)
+        dialog.setWindowTitle("Quiz - Perguntas sobre o Mapa")
+        dialog.setMinimumSize(600, 500)
+        
+        layout = QVBoxLayout(dialog)
+        
+        header = QLabel("Perguntas sobre seu Mapa Mental")
+        header.setFont(QFont("Arial", 14, QFont.Bold))
+        header.setAlignment(Qt.AlignCenter)
+        layout.addWidget(header)
+        
+        consecutive_label = QLabel("Acertos consecutivos: 0")
+        consecutive_label.setFont(QFont("Arial", 12))
+        consecutive_label.setAlignment(Qt.AlignCenter)
+        consecutive_label.setStyleSheet("color: #0078d4; font-weight: bold;")
+        layout.addWidget(consecutive_label)
+        
+        layout.addWidget(QLabel("<hr>"))
+        
+        question_label = QLabel("")
+        question_label.setFont(QFont("Arial", 11))
+        question_label.setWordWrap(True)
+        layout.addWidget(question_label)
+        
+        button_group = QButtonGroup(dialog)
+        option_widget = QWidget()
+        option_layout = QVBoxLayout(option_widget)
+        
+        def load_question():
+            q = self.quiz_manager.get_next_question()
+            if not q:
+                question_label.setText("Não há perguntas disponíveis.")
+                return False
+            
+            question_label.setText(f"<b>Pergunta:</b> {q.question}")
+            
+            for i in option_layout.children():
+                if isinstance(i, QWidget):
+                    i.deleteLater()
+            
+            for alt in q.alternatives:
+                rb = QRadioButton(alt)
+                option_layout.addWidget(rb)
+                button_group.addButton(rb)
+            
+            return True
+        
+        layout.addWidget(option_widget)
+        
+        feedback_label = QLabel("")
+        feedback_label.setWordWrap(True)
+        feedback_label.setStyleSheet("padding: 10px; border-radius: 5px;")
+        layout.addWidget(feedback_label)
+        
+        correction_label = QLabel("")
+        correction_label.setWordWrap(True)
+        correction_label.setStyleSheet("padding: 10px; background-color: #fff3cd; border-radius: 5px;")
+        correction_label.setVisible(False)
+        layout.addWidget(correction_label)
+        
+        def submit_answer():
+            selected = button_group.checkedButton()
+            if not selected:
+                return
+            
+            selected_text = selected.text()
+            result = self.quiz_manager.answer_question(
+                self.quiz_manager.state.questions[0].id if self.quiz_manager.state.questions else "",
+                selected_text
+            )
+            
+            consecutive = self.quiz_manager.get_consecutive_count()
+            consecutive_label.setText(f"Acertos consecutivos: {consecutive}")
+            
+            if result.get("correct"):
+                feedback_label.setText(f"✓ Correto! Muito bem!")
+                feedback_label.setStyleSheet("color: green; padding: 10px; font-weight: bold;")
+                consecutive_label.setStyleSheet("color: green; font-weight: bold;")
+            else:
+                feedback_label.setText(f"✗ Errado. A resposta correta é: {result.get('correct_answer', 'N/A')}")
+                feedback_label.setStyleSheet("color: red; padding: 10px; font-weight: bold;")
+                consecutive_label.setStyleSheet("color: red; font-weight: bold;")
+                
+                correction_label.setText(
+                    f"<b>Explicação:</b> {result.get('explanation', '')}"
+                )
+                correction_label.setVisible(True)
+                
+                current_q = self.quiz_manager.state.questions[0] if self.quiz_manager.state.questions else None
+                if current_q:
+                    correction_layout = QHBoxLayout()
+                    correction_layout.addWidget(QLabel("Corrigir resposta:"))
+                    correction_combo = QComboBox()
+                    for alt in current_q.alternatives:
+                        correction_combo.addItem(alt)
+                    correction_combo.setCurrentText(result.get('correct_answer', ''))
+                    correction_layout.addWidget(correction_combo)
+                    
+                    def save_correction():
+                        new_answer = correction_combo.currentText()
+                        self.quiz_manager.correct_answer(current_q.id, new_answer)
+                        correction_label.setText(f"Resposta corrigida para: {new_answer}")
+                    
+                    correct_btn = QPushButton("Salvar Correção")
+                    correct_btn.clicked.connect(save_correction)
+                    correction_layout.addWidget(correct_btn)
+                    correction_layout.addStretch()
+                    correction_label.layout() if correction_label.layout() else None
+            
+            next_btn.setEnabled(True)
+        
+        def next_question():
+            feedback_label.setText("")
+            correction_label.setVisible(False)
+            correction_label.setText("")
+            next_btn.setEnabled(False)
+            button_group.setExclusive(False)
+            for btn in button_group.buttons():
+                btn.setChecked(False)
+                btn.setEnabled(True)
+            button_group.setExclusive(True)
+            load_question()
+        
+        next_btn = QPushButton("Próxima Pergunta")
+        next_btn.setEnabled(False)
+        next_btn.clicked.connect(next_question)
+        layout.addWidget(next_btn)
+        
+        submit_btn = QPushButton("Responder")
+        submit_btn.clicked.connect(submit_answer)
+        layout.addWidget(submit_btn)
+        
+        close_btn = QPushButton("Fechar")
+        close_btn.clicked.connect(dialog.accept)
+        layout.addWidget(close_btn)
+        
+        load_question()
         
         dialog.exec()
 
