@@ -516,10 +516,15 @@ class InfiniteCanvas(QGraphicsView):
             # Mover TODOS os itens selecionados
             delta = current_pos - self._drag_start_pos
             
+            # Preparar mudança de geometria para todos os itens selecionados
+            for item, original_pos in self._item_positions.items():
+                if item.isSelected():
+                    item.prepareGeometryChange()
+            
+            # Mover os itens
             for item, original_pos in self._item_positions.items():
                 if item.isSelected():
                     new_pos = original_pos + delta
-                    item.prepareGeometryChange()
                     item.setPos(new_pos)
             
             # Atualizar conexões para todos os itens movidos
@@ -529,10 +534,13 @@ class InfiniteCanvas(QGraphicsView):
                     if item.isSelected() and item.scene():
                         for conn in item.scene().items():
                             if isinstance(conn, SmartConnection) and (conn.source == item or conn.target == item):
+                                conn.prepareGeometryChange()
                                 conn.update_path()
-                                conn.update()
             except:
                 pass
+            
+            # Forçar atualização da cena para redesenhar as conexões
+            self.scene().update()
             
             # Mostrar linhas de alinhamento para o item sendo arrastado se estiver ativo
             main_window = QApplication.activeWindow()

@@ -318,6 +318,7 @@ class StyledNode(QGraphicsRectItem):
                     from core.connection import SmartConnection
                     for item in self.scene().items():
                         if isinstance(item, SmartConnection) and (item.source == self or item.target == self):
+                            item.prepareGeometryChange()
                             item.update_path()
                 except:
                     pass
