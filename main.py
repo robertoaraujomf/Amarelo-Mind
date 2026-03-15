@@ -175,12 +175,18 @@ class MoveItemCommand(QUndoCommand):
         self.new_pos = new_pos
 
     def redo(self):
+        self.item.prepareGeometryChange()
         self.item.setPos(self.new_pos)
         self._update_connections()
+        if self.item.scene():
+            self.item.scene().update()
 
     def undo(self):
+        self.item.prepareGeometryChange()
         self.item.setPos(self.old_pos)
         self._update_connections()
+        if self.item.scene():
+            self.item.scene().update()
     
     def _update_connections(self):
         if self.item.scene():
@@ -313,6 +319,43 @@ class InfiniteCanvas(QGraphicsView):
         self._dragging_item = None
         self._drag_start_pos = None
         self._is_dragging = False
+        
+        # Configurar scrollbars com alcance expandido
+        self._setup_expanded_scrollbars()
+    
+    def _setup_expanded_scrollbars(self):
+        """Configura scrollbars com alcance expandido para canvas infinito"""
+        h_scroll = self.horizontalScrollBar()
+        v_scroll = self.verticalScrollBar()
+        h_scroll.setRange(-100000, 100000)
+        v_scroll.setRange(-100000, 100000)
+    
+    def _extend_scroll_range_if_needed(self):
+        """Estende o alcance dos scrollbars dinamicamente se necessário"""
+        h_scroll = self.horizontalScrollBar()
+        v_scroll = self.verticalScrollBar()
+        current_min_h, current_max_h = h_scroll.minimum(), h_scroll.maximum()
+        current_min_v, current_max_v = v_scroll.minimum(), v_scroll.maximum()
+        
+        val_h = h_scroll.value()
+        val_v = v_scroll.value()
+        
+        new_min_h, new_max_h = current_min_h, current_max_h
+        new_min_v, new_max_v = current_min_v, current_max_v
+        
+        if val_h < current_min_h + 1000:
+            new_min_h = current_min_h - 50000
+        if val_h > current_max_h - 1000:
+            new_max_h = current_max_h + 50000
+        if val_v < current_min_v + 1000:
+            new_min_v = current_min_v - 50000
+        if val_v > current_max_v - 1000:
+            new_max_v = current_max_v + 50000
+        
+        if (new_min_h != current_min_h or new_max_h != current_max_h or
+            new_min_v != current_min_v or new_max_v != current_max_v):
+            h_scroll.setRange(new_min_h, new_max_h)
+            v_scroll.setRange(new_min_v, new_max_v)
 
     def set_undo_stack(self, undo_stack):
         """Define o stack de Undo/Redo"""
@@ -449,6 +492,7 @@ class InfiniteCanvas(QGraphicsView):
             
             h_scroll.setValue(h_scroll.value() - int(smooth_delta.x()))
             v_scroll.setValue(v_scroll.value() - int(smooth_delta.y()))
+            self._extend_scroll_range_if_needed()
             return
         
         # Se está arrastando um item (não apenas clicou, mas realmente está movendo)
@@ -641,7 +685,7 @@ class AmareloMainWindow(QMainWindow):
         # Alinhar ativo por padrão
         self.alinhar_ativo = True
 
-        self.scene = QGraphicsScene(-10000, -10000, 20000, 20000)
+        self.scene = QGraphicsScene(-100000, -100000, 200000, 200000)
         self.view = InfiniteCanvas(self.scene, self)
         self.view.set_undo_stack(self.undo_stack)
         self.setCentralWidget(self.view)
@@ -749,11 +793,13 @@ class AmareloMainWindow(QMainWindow):
         tb = QToolBar()
         tb.setIconSize(QSize(40, 40))
         tb.setToolButtonStyle(Qt.ToolButtonIconOnly)
+        tb.setContextMenuPolicy(Qt.NoContextMenu)
         self.addToolBar(tb)
 
         def make_action(icon, tooltip, slot, shortcut_key=None):
             act = QAction(IconManager.load_icon(icon, icon[0]), "", self)
             act.setToolTip(tooltip)
+            act.setContextMenuPolicy(Qt.NoContextMenu)
             shortcut = self.custom_shortcuts.get(shortcut_key) if shortcut_key else None
             if shortcut:
                 act.setShortcut(shortcut)
@@ -775,12 +821,14 @@ class AmareloMainWindow(QMainWindow):
         self.act_undo.setToolTip(f"Desfazer ({self.custom_shortcuts.get('Desfazer', 'Ctrl+Z')})")
         self.act_undo.setIcon(IconManager.load_icon("Desfazer.png", "D"))
         self.act_undo.setShortcut(self.custom_shortcuts.get("Desfazer", "Ctrl+Z"))
+        self.act_undo.setContextMenuPolicy(Qt.NoContextMenu)
         tb.addAction(self.act_undo)
 
         self.act_redo = self.undo_stack.createRedoAction(self, "")
         self.act_redo.setToolTip(f"Refazer ({self.custom_shortcuts.get('Refazer', 'Ctrl+R')})")
         self.act_redo.setIcon(IconManager.load_icon("Refazer.png", "R"))
         self.act_redo.setShortcut(self.custom_shortcuts.get("Refazer", "Ctrl+R"))
+        self.act_redo.setContextMenuPolicy(Qt.NoContextMenu)
         tb.addAction(self.act_redo)
 
         tb.addSeparator()
@@ -1341,7 +1389,7 @@ class AmareloMainWindow(QMainWindow):
     # TECLAS DE ATALHO
     # --------------------------------------------------
     def keyPressEvent(self, event):
-        """Manipula eventos de teclado para movimento dos objetos selecionados"""
+        """Manipula eventos de teclado para movimento dos objetos selecionados ou pan da tela"""
         
         # Tecla + para adicionar objeto
         if event.key() == Qt.Key_Plus:
@@ -1351,33 +1399,37 @@ class AmareloMainWindow(QMainWindow):
         
         selected_items = [item for item in self.scene.selectedItems() if isinstance(item, (StyledNode, MediaItem))]
         
-        if not selected_items:
-            super().keyPressEvent(event)
-            return
-        
         # Movimento com setas (10 pixels por vez)
         delta_x = 0
         delta_y = 0
         step = 10
         
         if event.key() == Qt.Key_Left:
-            delta_x = -step
-        elif event.key() == Qt.Key_Right:
             delta_x = step
+        elif event.key() == Qt.Key_Right:
+            delta_x = -step
         elif event.key() == Qt.Key_Up:
-            delta_y = -step
-        elif event.key() == Qt.Key_Down:
             delta_y = step
+        elif event.key() == Qt.Key_Down:
+            delta_y = -step
         else:
             super().keyPressEvent(event)
             return
         
-        # Mover todos os itens selecionados
-        for item in selected_items:
-            new_pos = item.pos() + QPointF(delta_x, delta_y)
-            item.setPos(new_pos)
-        
-        event.accept()
+        if selected_items:
+            # Mover todos os itens selecionados
+            for item in selected_items:
+                new_pos = item.pos() + QPointF(delta_x, delta_y)
+                item.setPos(new_pos)
+            event.accept()
+        else:
+            # Mover a tela (pan) usando scrollbars
+            h_scroll = self.view.horizontalScrollBar()
+            v_scroll = self.view.verticalScrollBar()
+            h_scroll.setValue(h_scroll.value() + delta_x)
+            v_scroll.setValue(v_scroll.value() + delta_y)
+            self.view._extend_scroll_range_if_needed()
+            event.accept()
     
     # --------------------------------------------------
     # FUNCIONALIDADES
@@ -1750,10 +1802,24 @@ class AmareloMainWindow(QMainWindow):
         
         if self.persistence.load_from_file(path, self.scene, self):
             self._update_window_title()
+            self._update_custom_colors_from_scene()
             return True
         else:
             QMessageBox.critical(self, "Erro", f"Falha ao carregar o projeto: {os.path.basename(path)}")
             return False
+    
+    def _update_custom_colors_from_scene(self):
+        """Extrai cores personalizadas dos nós e adiciona ao QColorDialog"""
+        from PySide6.QtWidgets import QColorDialog
+        custom_colors = set()
+        for item in self.scene.items():
+            if isinstance(item, StyledNode) and item.custom_color:
+                custom_colors.add(item.custom_color)
+        for i, color_hex in enumerate(sorted(custom_colors)):
+            if i >= 16:
+                break
+            color = QColor(color_hex)
+            QColorDialog.setCustomColor(i, color)
 
     def open_project(self):
         """Abre um ou mais projetos salvos"""
@@ -2293,6 +2359,3 @@ if __name__ == "__main__":
     window.show()
     
     sys.exit(app.exec())
-    def contextMenuEvent(self, event):
-        # Swallow all context menus to keep a clean UI (no item/context menus)
-        event.accept()
