@@ -36,8 +36,6 @@ from items.media import MediaAVItem
 from items.media import MediaAVSliderItem
 import urllib.request
 
-from core.quiz import QuizManager
-
 
 # ======================================================
 # COMANDOS UNDO/REDO
@@ -677,9 +675,6 @@ class AmareloMainWindow(QMainWindow):
         # Gerenciador de persistência
         self.persistence = PersistenceManager()
         
-        # Gerenciador de quiz
-        self.quiz_manager = QuizManager()
-        
         # Autosave configuration
         self.autosave_enabled = False
         self.autosave_timer = QTimer()
@@ -861,12 +856,6 @@ class AmareloMainWindow(QMainWindow):
 
         self.act_font = make_action("Fonte.png", "Fonte", self.change_font)
         self.act_colors = make_action("Cores.png", "Cores", self.change_colors)
-
-        tb.addSeparator()
-
-        # Botão Quiz (Perguntas sobre o mapa)
-        self.act_quiz = make_action("Localizar.png", "Fazer perguntas sobre o mapa", self.show_quiz_dialog, "Localizar")
-        self.act_quiz.setIcon(IconManager.load_icon("Perguntar.png", "?"))
 
         tb.addSeparator()
 
@@ -2510,11 +2499,11 @@ class AmareloMainWindow(QMainWindow):
         close_btn.clicked.connect(dialog.accept)
         layout.addWidget(close_btn)
         
-        load_question()
-        
         dialog.exec()
 
 
+  # ======================================================
+  # MAIN
   # ======================================================
   # MAIN
   # ======================================================
