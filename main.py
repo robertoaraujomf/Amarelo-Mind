@@ -807,6 +807,7 @@ class AmareloMainWindow(QMainWindow):
         tb.setIconSize(QSize(40, 40))
         tb.setToolButtonStyle(Qt.ToolButtonIconOnly)
         tb.setContextMenuPolicy(Qt.NoContextMenu)
+        tb.setToolButtonPopupMode(QToolBar.ToolButtonPopupMode.InstantPopup)
         self.addToolBar(tb)
 
         def make_action(icon, tooltip, slot, shortcut_key=None):
