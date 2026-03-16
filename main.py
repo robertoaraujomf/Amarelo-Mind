@@ -812,7 +812,6 @@ class AmareloMainWindow(QMainWindow):
         def make_action(icon, tooltip, slot, shortcut_key=None):
             act = QAction(IconManager.load_icon(icon, icon[0]), "", self)
             act.setToolTip(tooltip)
-            act.setContextMenuPolicy(Qt.NoContextMenu)
             shortcut = self.custom_shortcuts.get(shortcut_key) if shortcut_key else None
             if shortcut:
                 act.setShortcut(shortcut)
@@ -834,14 +833,12 @@ class AmareloMainWindow(QMainWindow):
         self.act_undo.setToolTip(f"Desfazer ({self.custom_shortcuts.get('Desfazer', 'Ctrl+Z')})")
         self.act_undo.setIcon(IconManager.load_icon("Desfazer.png", "D"))
         self.act_undo.setShortcut(self.custom_shortcuts.get("Desfazer", "Ctrl+Z"))
-        self.act_undo.setContextMenuPolicy(Qt.NoContextMenu)
         tb.addAction(self.act_undo)
 
         self.act_redo = self.undo_stack.createRedoAction(self, "")
         self.act_redo.setToolTip(f"Refazer ({self.custom_shortcuts.get('Refazer', 'Ctrl+R')})")
         self.act_redo.setIcon(IconManager.load_icon("Refazer.png", "R"))
         self.act_redo.setShortcut(self.custom_shortcuts.get("Refazer", "Ctrl+R"))
-        self.act_redo.setContextMenuPolicy(Qt.NoContextMenu)
         tb.addAction(self.act_redo)
 
         tb.addSeparator()
