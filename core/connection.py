@@ -28,14 +28,23 @@ class SmartConnection(QGraphicsPathItem):
         self.setPen(QPen(QColor("#0078d4"), 3, Qt.SolidLine, Qt.RoundCap))
         self.setZValue(-1) # Garante que a linha fique por baixo dos nós
         
-        # Tornar a conexão selecionável
-        self.setFlag(QGraphicsPathItem.ItemIsSelectable, True)
+        # Não selecionável por padrão (só via double-click)
         self.setAcceptHoverEvents(True)
         
         self.update_path()
+    
+    def mouseDoubleClickEvent(self, event):
+        """Permite selecionar a linha apenas com duplo clique."""
+        self.setFlag(QGraphicsPathItem.ItemIsSelectable, True)
+        self.setSelected(True)
+        event.accept()
 
-    def update_path(self):
-        """Atualiza o caminho com sistema otimizado de roteamento"""
+    def update_path(self, moving_node=None):
+        """Atualiza o caminho com sistema otimizado de roteamento.
+        
+        Args:
+            moving_node: O nó que está se movendo. Se None, ambos os nós são recalculados.
+        """
         if not self.source.scene() or not self.target.scene():
             return
 

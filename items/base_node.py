@@ -1,4 +1,4 @@
-from PySide6.QtWidgets import QGraphicsRectItem, QGraphicsItem, QGraphicsTextItem
+from PySide6.QtWidgets import QGraphicsRectItem, QGraphicsItem, QGraphicsTextItem, QApplication
 from PySide6.QtCore import Qt, QRectF, QPointF
 from PySide6.QtGui import QPen, QBrush, QColor, QCursor
 
@@ -159,7 +159,8 @@ class MindMapNode(QGraphicsRectItem):
                 try:
                     from core.connection import SmartConnection
                     for item in self.scene().items():
-                        if isinstance(item, SmartConnection) and (item.source == self or item.target == self):
+                        if isinstance(item, SmartConnection) and item.target == self:
+                            item.prepareGeometryChange()
                             item.update_path()
                 except: pass
         return super().itemChange(change, value)

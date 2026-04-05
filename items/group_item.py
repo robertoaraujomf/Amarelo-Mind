@@ -44,6 +44,22 @@ class GroupNode(QGraphicsRectItem):
         # Requisito 10: Arredondado nas pontas
         painter.drawRoundedRect(r, 15, 15)
 
+    def _update_children_connections(self):
+        """Atualiza conexões de todos os filhos e do próprio grupo onde são destinos."""
+        if not self.scene():
+            return
+        try:
+            from core.connection import SmartConnection
+            items_to_update = set(self.child_items)
+            items_to_update.add(self)
+            for conn in self.scene().items():
+                if isinstance(conn, SmartConnection):
+                    if conn.target in items_to_update:
+                        conn.prepareGeometryChange()
+                        conn.update_path()
+        except:
+            pass
+
     def itemChange(self, change, value):
         # Quando o grupo move, todos os filhos movem juntos
         if change == QGraphicsItem.ItemPositionChange:
@@ -57,4 +73,6 @@ class GroupNode(QGraphicsRectItem):
         elif change == QGraphicsItem.ItemPositionHasChanged:
             # Recalcula bounds quando filhos se movem
             self.calculate_bounds()
+            # Atualizar conexões dos filhos E do grupo onde são destinos
+            self._update_children_connections()
         return super().itemChange(change, value)

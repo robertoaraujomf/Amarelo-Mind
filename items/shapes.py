@@ -312,12 +312,12 @@ class StyledNode(QGraphicsRectItem):
             if hasattr(main, "alinhar_ativo") and main.alinhar_ativo:
                 pos = value
         if change == QGraphicsItem.ItemPositionHasChanged:
-            # Atualizar conexões quando o nó se move
+            # Atualizar APENAS conexões onde este nó é o destino
             if self.scene():
                 try:
                     from core.connection import SmartConnection
                     for item in self.scene().items():
-                        if isinstance(item, SmartConnection) and (item.source == self or item.target == self):
+                        if isinstance(item, SmartConnection) and item.target == self:
                             item.prepareGeometryChange()
                             item.update_path()
                 except:

@@ -521,23 +521,11 @@ class InfiniteCanvas(QGraphicsView):
                 if item.isSelected():
                     item.prepareGeometryChange()
             
-            # Mover os itens
+            # Mover os itens - cada nó atualiza suas conexões via itemChange
             for item, original_pos in self._item_positions.items():
                 if item.isSelected():
                     new_pos = original_pos + delta
                     item.setPos(new_pos)
-            
-            # Atualizar conexões para todos os itens movidos
-            try:
-                from core.connection import SmartConnection
-                for item in self._item_positions.keys():
-                    if item.isSelected() and item.scene():
-                        for conn in item.scene().items():
-                            if isinstance(conn, SmartConnection) and (conn.source == item or conn.target == item):
-                                conn.prepareGeometryChange()
-                                conn.update_path()
-            except:
-                pass
             
             # Forçar atualização da cena para redesenhar as conexões
             self.scene().update()
