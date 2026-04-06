@@ -1,0 +1,10 @@
+[Desktop Entry]
+Version=1.0
+Type=Application
+Name=Amarelo Mind
+Comment=Mapa mental interativo
+Exec=/home/roberto/Projetos/Amarelo-Mind/dist/AmareloMind
+Icon=/home/roberto/Projetos/Amarelo-Mind/assets/icons/App_icon.png
+Terminal=false
+Categories=Office;Utility;
+StartupWMClass=AmareloMind

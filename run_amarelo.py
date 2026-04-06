@@ -28,6 +28,11 @@ import main
 # Create application instance
 app = QApplication.instance() or QApplication(sys.argv)
 
+# Set app identity for proper panel integration (fixes duplicate icon issue)
+app.setApplicationName("AmareloMind")
+app.setApplicationDisplayName("Amarelo Mind")
+app.setDesktopFileName("AmareloMind")
+
 # Set window icon
 icon_path = os.path.join(base_dir, "assets", "icons", "App_icon.ico")
 if os.path.exists(icon_path):
