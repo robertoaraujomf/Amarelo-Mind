@@ -23,6 +23,7 @@ BASE_DIR = os.path.dirname(os.path.abspath(__file__))
 from core.icon_manager import IconManager
 from core.persistence import PersistenceManager
 from core.item_filter import ItemFilter
+from core.positioning import find_best_position_radial
 IconManager.set_icons_base(BASE_DIR)
 
 from items.shapes import StyledNode, Handle
@@ -1465,50 +1466,13 @@ class AmareloMainWindow(QMainWindow):
 
         if len(sel) == 1 and isinstance(sel[0], (StyledNode, MediaItem)):
             source = sel[0]
-            source_rect = source.sceneBoundingRect()
             
-            # Verificar espaço ao redor para posicionar o novo objeto
-            # Tentar posições: direita, esquerda, abaixo, acima
-            candidates = []
-            offset = 50  # distância do objeto fonte
-            
-            # Direita
-            candidates.append(QPointF(source_rect.right() + offset, source_rect.top()))
-            # Esquerda  
-            candidates.append(QPointF(source_rect.left() - offset, source_rect.top()))
-            # Abaixo
-            candidates.append(QPointF(source_rect.left(), source_rect.bottom() + offset))
-            # Acima
-            candidates.append(QPointF(source_rect.left(), source_rect.top() - offset))
-            
-            # Escolher a primeira posição que não colida com outros objetos
-            new_pos = None
-            for candidate in candidates:
-                collides = False
-                for item in self.scene.items():
-                    if item == source or not hasattr(item, 'sceneBoundingRect'):
-                        continue
-                    item_rect = item.sceneBoundingRect()
-                    # Verificar colisão com margem de 10px
-                    if item_rect.adjusted(-10, -10, 10, 10).intersects(source_rect):
-                        # Ajustar para posição absoluta
-                        test_rect = source_rect.translated(candidate - source_rect.topLeft())
-                        if test_rect.adjusted(-10, -10, 10, 10).intersects(item_rect):
-                            collides = True
-                            break
-                if not collides:
-                    new_pos = candidate
-                    break
-            
-            # Se todas as posições colidem, usar a posição original (direita)
-            if new_pos is None:
-                new_pos = candidates[0]
+            new_pos = find_best_position_radial(source, self.scene)
             
             node = StyledNode(new_pos.x(), new_pos.y())
             self.undo_stack.push(AddItemCommand(self.scene, node, "Adicionar objeto", self))
             connection = SmartConnection(source, node)
             self.undo_stack.push(AddItemCommand(self.scene, connection, "Conectar objeto", self))
-            # Forçar atualização do caminho da conexão
             connection.update_path()
         else:
             pos = self.view.mapToScene(self.view.viewport().rect().center())

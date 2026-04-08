@@ -48,22 +48,46 @@ class SmartConnection(QGraphicsPathItem):
         if not self.source.scene() or not self.target.scene():
             return
 
-        start = self.source.sceneBoundingRect().center()
-        end = self.target.sceneBoundingRect().center()
+        source_rect = self.source.sceneBoundingRect()
+        target_rect = self.target.sceneBoundingRect()
         
-        # Verificar se as coordenadas são válidas
+        start, end = self._calculate_optimal_anchors(source_rect, target_rect)
+        
         if not (self._is_valid_point(start) and self._is_valid_point(end)):
             return
         
-        # Verificar distância máxima (evitar linhas infinitas)
         dx = end.x() - start.x()
         dy = end.y() - start.y()
         distance = math.sqrt(dx*dx + dy*dy)
-        if distance > 10000:  # Limite de 10000 pixels
+        if distance > 10000:
             return
         
-        # Usar sistema simplificado e rápido
         self._update_path_fast(start, end)
+    
+    def _calculate_optimal_anchors(self, source_rect, target_rect):
+        """Calcula pontos de ancoragem ótimos nas bordas dos objetos."""
+        sc = source_rect.center()
+        tc = target_rect.center()
+        
+        dx = tc.x() - sc.x()
+        dy = tc.y() - sc.y()
+        
+        if abs(dx) > abs(dy):
+            if dx > 0:
+                start = QPointF(source_rect.right(), sc.y())
+                end = QPointF(target_rect.left(), tc.y())
+            else:
+                start = QPointF(source_rect.left(), sc.y())
+                end = QPointF(target_rect.right(), tc.y())
+        else:
+            if dy > 0:
+                start = QPointF(sc.x(), source_rect.bottom())
+                end = QPointF(tc.x(), target_rect.top())
+            else:
+                start = QPointF(sc.x(), source_rect.top())
+                end = QPointF(tc.x(), target_rect.bottom())
+        
+        return start, end
     
     def _is_valid_point(self, point):
         """Verifica se um ponto tem coordenadas válidas"""
