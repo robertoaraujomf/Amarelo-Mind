@@ -24,6 +24,7 @@ from core.icon_manager import IconManager
 from core.persistence import PersistenceManager
 from core.item_filter import ItemFilter
 from core.positioning import find_best_position_radial
+from core.dialogs import FontStyleDialog, ColorPickerDialog
 IconManager.set_icons_base(BASE_DIR)
 
 from items.shapes import StyledNode, Handle
@@ -1613,43 +1614,31 @@ class AmareloMainWindow(QMainWindow):
         cursor = target_node.text.textCursor()
         has_text_selection = cursor.hasSelection()
         
-        # Abrir diálogo
-        result = QFontDialog.getFont(target_node.text.font(), self)
+        # Abrir diálogo customizado
+        font, fmt, ok = FontStyleDialog.get_font_and_format(target_node.text.font(), self)
         
-        # Validar resultado
-        if not isinstance(result, tuple) or len(result) != 2:
+        if not ok:
             return
         
-        ok, font = result
-        
-        if not ok or not isinstance(font, QFont):
-            return
-        
-        # Guardar HTML antes
         old_html = target_node.text.document().toHtml()
         
         if has_text_selection:
-            # Aplicar apenas ao texto selecionado
             selection_start = cursor.selectionStart()
             selection_end = cursor.selectionEnd()
             cursor.setPosition(selection_start)
             cursor.setPosition(selection_end, QTextCursor.KeepAnchor)
             
-            # Aplicar formato
-            fmt = QTextCharFormat()
             fmt.setFont(font)
             cursor.mergeCharFormat(fmt)
-            
-            # Atualizar o cursor do texto
             target_node.text.setTextCursor(cursor)
         else:
-            # Aplicar a toda a fonte do nó (objeto selecionado sem seleção de texto)
             target_node.text.setFont(font)
+            cursor.select(cursor.SelectionType.Document)
+            cursor.mergeCharFormat(fmt)
+            target_node.text.setTextCursor(cursor)
         
-        # Guardar HTML depois
         new_html = target_node.text.document().toHtml()
         
-        # Registrar no undo/redo se houve mudança
         if old_html != new_html:
             self.undo_stack.beginMacro("Mudar fonte")
             cmd = ChangeTextHtmlCommand(target_node, old_html, new_html, "Mudar fonte")
@@ -1677,14 +1666,12 @@ class AmareloMainWindow(QMainWindow):
         if not target_node:
             return
 
-        # Verificar se há texto selecionado
         cursor = target_node.text.textCursor()
         has_text_selection = cursor.hasSelection()
         
         if has_text_selection:
-            # Texto selecionado: mudar cor do texto
-            color = QColorDialog.getColor(Qt.black, self, "Cor do texto")
-            if not color.isValid():
+            color, ok = ColorPickerDialog.get_color_value(QColor("#000000"), self)
+            if not ok:
                 return
             
             self.undo_stack.beginMacro("Mudar cor do texto")
@@ -1698,9 +1685,9 @@ class AmareloMainWindow(QMainWindow):
             self.undo_stack.push(cmd)
             self.undo_stack.endMacro()
         else:
-            # Nenhum texto selecionado: mudar cor de fundo do nó
-            color = QColorDialog.getColor(Qt.white, self, "Cor de fundo")
-            if color.isValid():
+            initial_color = QColor(target_node.custom_color) if target_node.custom_color else QColor("#FFFFFF")
+            color, ok = ColorPickerDialog.get_color_value(initial_color, self)
+            if ok:
                 self.undo_stack.beginMacro("Mudar cor de fundo")
                 old_state = {'node_type': target_node.node_type, 'custom_color': target_node.custom_color}
                 new_state = {'node_type': target_node.node_type, 'custom_color': color.name()}
