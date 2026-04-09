@@ -11,6 +11,10 @@ def find_best_position_radial(source, scene, node_width=200, node_height=100, mi
     """
     Encontra a melhor posição para um novo nó usando busca radial.
     
+    Regras de validação:
+        1. Hard Constraint: Posição não pode sobrepor objetos nem linhas de conexão existentes
+        2. Soft Constraint: Prioriza posições com menor número de cruzamentos de linhas
+    
     Args:
         source: O nó fonte (objeto existente selecionado)
         scene: A cena do PyQt onde os objetos estão
@@ -28,8 +32,12 @@ def find_best_position_radial(source, scene, node_width=200, node_height=100, mi
     
     all_items = list(scene.items())
     
-    def has_collision(pos, width, height):
-        """Verifica se o retângulo na posição dada colide com outros elementos."""
+    def get_connection_lines():
+        """Retorna todas as linhas de conexão (QGraphicsPathItem)."""
+        return [item for item in all_items if isinstance(item, QGraphicsPathItem)]
+    
+    def has_hard_collision(pos, width, height):
+        """Verifica colisão com objetos e linhas de conexão (Hard Constraint)."""
         new_rect = QRectF(pos.x(), pos.y(), width, height)
         expanded_rect = new_rect.adjusted(-collision_margin, -collision_margin, collision_margin, collision_margin)
         
@@ -44,12 +52,28 @@ def find_best_position_radial(source, scene, node_width=200, node_height=100, mi
             item_rect = item.sceneBoundingRect()
             if expanded_rect.intersects(item_rect):
                 return True
+        
+        node_rect = QRectF(pos.x(), pos.y(), width, height)
+        for conn_line in get_connection_lines():
+            if _rect_intersects_path(node_rect, conn_line.path()):
+                return True
+        
         return False
     
-    best_position = None
-    best_distance = float('inf')
+    def count_line_crossings(pos, width, height):
+        """Conta quantas linhas de conexão a conexão do novo nó cruzaria (Soft Constraint)."""
+        node_center = QPointF(pos.x() + width / 2, pos.y() + height / 2)
+        crossings = 0
+        
+        for conn_line in get_connection_lines():
+            if _line_segments_intersect(source_center, node_center, conn_line.path()):
+                crossings += 1
+        
+        return crossings
     
-    num_angles = 36  # 360 graus / 36 = 10 graus por passo
+    valid_positions = []
+    
+    num_angles = 36
     distance_step = 20
     
     for angle_idx in range(num_angles):
@@ -58,20 +82,63 @@ def find_best_position_radial(source, scene, node_width=200, node_height=100, mi
         for dist in range(int(min_distance), int(max_distance), distance_step):
             x = source_center.x() + math.cos(angle) * dist - node_width / 2
             y = source_center.y() + math.sin(angle) * dist - node_height / 2
+            candidate_pos = QPointF(x, y)
             
-            if not has_collision(QPointF(x, y), node_width, node_height):
-                if dist < best_distance:
-                    best_distance = dist
-                    best_position = QPointF(x, y)
+            if not has_hard_collision(candidate_pos, node_width, node_height):
+                crossings = count_line_crossings(candidate_pos, node_width, node_height)
+                valid_positions.append((candidate_pos, dist, crossings))
                 break
     
-    if best_position is None:
+    if not valid_positions:
         fallback_dist = min_distance + 50
         fallback_x = source_center.x() + fallback_dist - node_width / 2
         fallback_y = source_center.y() - node_height / 2
-        best_position = QPointF(fallback_x, fallback_y)
+        return QPointF(fallback_x, fallback_y)
     
-    return best_position
+    valid_positions.sort(key=lambda p: (p[2], p[1]))
+    
+    return valid_positions[0][0]
+
+
+def _rect_intersects_path(rect, path):
+    """Verifica se um retângulo intersecta um caminho (path)."""
+    if path.elementCount() < 2:
+        return False
+    
+    bounding = path.boundingRect()
+    if not rect.intersects(bounding):
+        return False
+    
+    for i in range(path.elementCount() - 1):
+        p1 = path.elementAt(i)
+        p2 = path.elementAt(i + 1)
+        line_start = QPointF(p1.x, p1.y)
+        line_end = QPointF(p2.x, p2.y)
+        
+        if _line_intersects_rect(line_start, line_end, rect):
+            return True
+        
+        if rect.contains(line_start) or rect.contains(line_end):
+            return True
+    
+    return False
+
+
+def _line_segments_intersect(p1, p2, path):
+    """Verifica se uma linha (p1-p2) intersecta algum segmento de um path."""
+    if path.elementCount() < 2:
+        return False
+    
+    for i in range(path.elementCount() - 1):
+        ep1 = path.elementAt(i)
+        ep2 = path.elementAt(i + 1)
+        line_a = QPointF(ep1.x, ep1.y)
+        line_b = QPointF(ep2.x, ep2.y)
+        
+        if _segments_intersect(p1, p2, line_a, line_b):
+            return True
+    
+    return False
 
 
 def check_connection_intersection(source, target, scene, exclude_connection=None):
