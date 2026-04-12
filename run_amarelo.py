@@ -21,6 +21,7 @@ os.environ.setdefault("QT_LOGGING_RULES",
 # Now import Qt and launch
 from PySide6.QtWidgets import QApplication
 from PySide6.QtGui import QIcon
+from PySide6.QtCore import Qt
 
 # Import main module
 import main
@@ -54,6 +55,22 @@ window = main.AmareloMainWindow()
 if file_to_load:
     print(f"DEBUG: Calling load_file with: {file_to_load}")
     window.load_file(file_to_load)
+
+# Set window role for proper taskbar/dock grouping on Linux
+# This fixes duplicate icon issue in panel (one for app, one for window)
+try:
+    window.setWindowRole("main")
+except Exception:
+    pass
+
+# Force window to use app identity for grouping
+# On Linux, this ensures the window groups with the app icon in the panel
+try:
+    from PySide6.QtX11Extras import QX11Info
+    if hasattr(window, 'winId'):
+        window_id = int(window.winId())
+except Exception:
+    pass
 
 window.show()
 

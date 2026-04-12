@@ -2452,6 +2452,11 @@ if __name__ == "__main__":
     # Estilo global e configuração
     app.setStyle("Fusion")
     
+    # App identity for proper panel integration (fixes duplicate icon issue)
+    app.setApplicationName("AmareloMind")
+    app.setApplicationDisplayName("Amarelo Mind")
+    app.setDesktopFileName("AmareloMind")
+    
     # Registrar ícone para arquivos .amind (Windows only)
     try:
         from register_icon import register_icon
@@ -2460,6 +2465,13 @@ if __name__ == "__main__":
         print(f"Aviso: Não foi possível registrar ícone .amind: {e}")
     
     window = AmareloMainWindow()
+    
+    # Set window role for proper taskbar grouping on Linux
+    try:
+        window.setWindowRole("main")
+    except Exception:
+        pass
+    
     window.show()
     
     sys.exit(app.exec())
