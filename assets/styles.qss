@@ -22,6 +22,7 @@ QToolBar QToolButton {
     min-height: 46px;
     margin: 2px;
     padding: 3px;
+    icon-size: 28px;
 }
 
 QToolBar QToolButton:hover {
