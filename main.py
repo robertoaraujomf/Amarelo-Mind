@@ -756,7 +756,7 @@ class AmareloMainWindow(QMainWindow):
     # STYLES
     # --------------------------------------------------
     def load_styles(self):
-        qss = os.path.join(BASE_DIR, "styles.qss")
+        qss = os.path.join(BASE_DIR, "assets", "styles.qss")
         if os.path.exists(qss):
             with open(qss, "r", encoding="utf-8") as f:
                 self.setStyleSheet(f.read())
