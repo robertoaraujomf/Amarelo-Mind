@@ -1,209 +1,209 @@
 #!/usr/bin/env python3
-"""Gera ícones coloridos e sugestivos para a toolbar."""
+"""Gera ícones intuitivos e sugestivos para a toolbar."""
 
 import os
 from PySide6.QtWidgets import QApplication
 from PySide6.QtGui import QPainter, QPixmap, QColor, QPen, QBrush
 from PySide6.QtCore import Qt, QRectF, QPointF
 
-def criar_icon(nome, descritivo):
-    """Cria um ícone de 256x256."""
+def criar_icon(tipo):
+    """Cria um ícone de 256x256 com design intuitivo."""
     pix = QPixmap(256, 256)
     pix.fill(Qt.transparent)
     p = QPainter(pix)
     p.setRenderHint(QPainter.Antialiasing)
     
-    if descritivo == "novo":
+    if tipo == "novo":
+        # Página branca/doc novo - mais intuitivo
         p.setBrush(QBrush(QColor("#2d6a4f")))
         p.setPen(QPen(Qt.NoPen))
-        p.drawRoundedRect(QRectF(50, 50, 156, 176), 15, 15)
-        p.setPen(QPen(QColor("#ffffff"), 6))
-        p.drawLine(80, 100, 176, 100)
-        p.drawLine(80, 140, 156, 140)
-        p.drawLine(80, 180, 130, 180)
+        p.drawRoundedRect(QRectF(40, 40, 176, 196), 15, 15)
+        # dobrinha no canto
+        p.setBrush(QBrush(QColor("#3d7a5f")))
+        p.drawPolygon([QPointF(160, 40), QPointF(216, 40), QPointF(216, 96), QPointF(160, 80)])
+        # linhas de texto
+        p.setPen(QPen(QColor("#ffffff"), 8))
+        p.drawLine(64, 100, 192, 100)
+        p.drawLine(64, 140, 176, 140)
+        p.drawLine(64, 180, 140, 180)
         
-    elif descritivo == "abrir":
+    elif tipo == "abrir":
+        # Pasta aberta com seta para baixo - Abrir
         p.setBrush(QBrush(QColor("#ff8c00")))
         p.setPen(QPen(Qt.NoPen))
-        p.drawRoundedRect(QRectF(40, 70, 176, 150), 15, 15)
+        p.drawRoundedRect(QRectF(30, 70, 196, 155), 15, 15)
+        # Aba da pasta
         p.setBrush(QBrush(QColor("#ffaa33")))
-        p.drawRoundedRect(QRectF(40, 40, 176, 45), 10, 10)
-        p.setPen(QPen(QColor("#ffffff"), 10))
-        p.drawLine(100, 130, 156, 175)
+        p.drawRoundedRect(QRectF(30, 35, 196, 50), 12, 12)
+        # Seta apontando para baixo dentro
+        p.setPen(QPen(QColor("#ffffff"), 14, Qt.SolidLine, Qt.RoundCap))
+        p.drawLine(128, 100, 128, 170)
+        p.drawLine(100, 140, 128, 170)
+        p.drawLine(156, 140, 128, 170)
         
-    elif descritivo == "salvar":
+    elif tipo == "salvar":
+        # Disquete clássico - Salvar
         p.setBrush(QBrush(QColor("#6e7681")))
         p.setPen(QPen(Qt.NoPen))
-        p.drawRoundedRect(QRectF(55, 55, 146, 156), 12, 12)
+        p.drawRoundedRect(QRectF(50, 60, 156, 155), 12, 12)
+        # Tampa superior (etiqueta)
         p.setBrush(QBrush(QColor("#2d6a4f")))
-        p.drawRoundedRect(QRectF(70, 30, 116, 40), 8, 8)
+        p.drawRoundedRect(QRectF(65, 30, 126, 45), 8, 8)
+        # Furos de Borracha
+        p.setBrush(QBrush(QColor("#4a5568")))
+        p.drawEllipse(90, 175, 20, 20)
+        p.drawEllipse(166, 175, 20, 20)
+        # Checkmark
+        p.setPen(QPen(QColor("#90EE90"), 10, Qt.SolidLine, Qt.RoundCap))
+        p.drawLine(108, 210, 138, 240)
+        p.drawLine(138, 240, 180, 180)
         
-    elif descritivo == "exportar":
+    elif tipo == "desfazer":
+        # Seta curva para esquerda com volta
+        p.setPen(QPen(QColor("#2d6a4f"), 20, Qt.SolidLine, Qt.RoundCap))
+        p.drawLine(180, 70, 80, 128)
+        p.drawLine(80, 70, 180, 214)
+        p.drawLine(80, 128, 180, 186)
+        # Triângulo
+        p.setBrush(QBrush(QColor("#2d6a4f")))
+        p.drawPolygon([QPointF(80, 128), QPointF(35, 80), QPointF(35, 176)])
+        
+    elif tipo == "refazer":
+        # Seta curva para direita
+        p.setPen(QPen(QColor("#2d6a4f"), 20, Qt.SolidLine, Qt.RoundCap))
+        p.drawLine(76, 70, 176, 128)
+        p.setPen(QPen(QColor("#2d6a4f"), 16, Qt.SolidLine, Qt.RoundCap))
+        p.drawLine(76, 128, 176, 186)
+        p.drawLine(176, 128, 76, 214)
+        # Triângulo
+        p.setBrush(QBrush(QColor("#2d6a4f")))
+        p.drawPolygon([QPointF(176, 128), QPointF(221, 80), QPointF(221, 176)])
+        
+    elif tipo == "copiar":
+        # Dois retângulos sobrepostos - Copiar
         p.setBrush(QBrush(QColor("#00b4d8")))
         p.setPen(QPen(Qt.NoPen))
-        p.drawRoundedRect(QRectF(40, 40, 176, 176), 15, 15)
-        p.setBrush(QBrush(QColor("#2d6a4f")))
-        p.drawPolygon([QPointF(60, 200), QPointF(100, 100), QPointF(150, 160), QPointF(196, 90), QPointF(196, 200)])
-        p.setBrush(QBrush(QColor("#ffd700")))
-        p.drawEllipse(QRectF(170, 55, 30, 30))
-        
-    elif descritivo == "desfazer":
-        p.setPen(QPen(QColor("#2d6a4f"), 18, Qt.SolidLine, Qt.RoundCap))
-        p.drawLine(180, 60, 80, 128)
-        p.drawLine(80, 60, 180, 196)
-        # Triângulo (simplificado com drawPolygon)
-        pts = [QPointF(80, 128), QPointF(40, 90), QPointF(40, 166)]
-        p.setBrush(QBrush(QColor("#2d6a4f")))
-        p.drawPolygon(pts)
-        
-    elif descritivo == "refazer":
-        p.setPen(QPen(QColor("#2d6a4f"), 18, Qt.SolidLine, Qt.RoundCap))
-        p.drawLine(76, 60, 176, 128)
-        p.drawLine(76, 196, 176, 128)
-        pts = [QPointF(176, 128), QPointF(216, 90), QPointF(216, 166)]
-        p.setBrush(QBrush(QColor("#2d6a4f")))
-        p.drawPolygon(pts)
-        
-    elif descritivo == "copiar":
-        p.setBrush(QBrush(QColor("#00b4d8")))
-        p.setPen(QPen(Qt.NoPen))
-        p.drawRoundedRect(QRectF(50, 50, 130, 156), 12, 12)
+        p.drawRoundedRect(QRectF(45, 45, 140, 166), 12, 12)
+        # Segundo retângulo levemente deslocado
         p.setBrush(QBrush(QColor("#0077b6")))
-        p.drawRoundedRect(QRectF(76, 50, 130, 156), 12, 12)
+        p.drawRoundedRect(QRectF(71, 45, 140, 166), 12, 12)
+        # Seta indicando copia
+        p.setPen(QPen(QColor("#ffffff"), 10, Qt.SolidLine, Qt.RoundCap))
+        p.drawLine(156, 95, 200, 140)
         
-    elif descritivo == "colar":
+    elif tipo == "colar":
+        # Prancheta com clipe - Colar
         p.setBrush(QBrush(QColor("#00b4d8")))
         p.setPen(QPen(Qt.NoPen))
-        p.drawRoundedRect(QRectF(45, 45, 166, 170), 12, 12)
-        p.setPen(QPen(QColor("#ffffff"), 6))
-        p.drawLine(75, 95, 181, 95)
-        p.drawLine(75, 135, 150, 135)
-        p.drawLine(75, 175, 120, 175)
+        p.drawRoundedRect(QRectF(40, 50, 176, 175), 12, 12)
+        # Clipe no topo
+        p.setBrush(QBrush(QColor("#ffd700")))
+        p.drawRoundedRect(QRectF(98, 25, 60, 40), 6, 6)
+        # Linhas de texto
+        p.setPen(QPen(QColor("#ffffff"), 8))
+        p.drawLine(70, 105, 186, 105)
+        p.drawLine(70, 150, 150, 150)
+        p.drawLine(70, 195, 110, 195)
         
-    elif descritivo == "adicionar":
-        p.setBrush(QBrush(QColor("#2d6a4f")))
-        p.setPen(QPen(Qt.NoPen))
-        p.drawEllipse(58, 58, 140, 140)
-        p.setPen(QPen(QColor("#ffffff"), 16, Qt.SolidLine, Qt.RoundCap))
-        p.drawLine(128, 85, 128, 171)
-        p.drawLine(85, 128, 171, 128)
-        
-    elif descritivo == "midia":
+    elif tipo == "midia":
+        # Claquete de cinema - Mídia
         p.setBrush(QBrush(QColor("#ff6b6b")))
         p.setPen(QPen(Qt.NoPen))
-        p.drawRoundedRect(QRectF(35, 85, 145, 115), 10, 10)
-        p.setBrush(QBrush(QColor("#cc5555")))
-        p.drawRoundedRect(QRectF(45, 55, 125, 45), 8, 8)
-        
-    elif descritivo == "conectar":
-        p.setBrush(QBrush(QColor("#00b4d8")))
-        p.setPen(QPen(Qt.NoPen))
-        p.drawEllipse(50, 85, 90, 90)
-        p.drawEllipse(116, 85, 90, 90)
-        p.setPen(QPen(QColor("#ffffff"), 8))
-        p.drawLine(125, 130, 131, 130)
-        
-    elif descritivo == "ocultar":
-        p.setBrush(QBrush(Qt.NoBrush))
-        p.setPen(QPen(QColor("#2d6a4f"), 12))
-        p.drawRoundedRect(QRectF(45, 85, 166, 95), 50, 50)
-        p.setBrush(QBrush(QColor("#2d6a4f")))
-        p.drawEllipse(83, 105, 55, 55)
-        p.setBrush(QBrush(QColor("#0f1621")))
-        p.drawEllipse(98, 120, 25, 25)
-        
-    elif descritivo == "excluir":
-        p.setBrush(QBrush(QColor("#ff6b6b")))
-        p.setPen(QPen(Qt.NoPen))
-        p.drawRoundedRect(QRectF(65, 95, 126, 130), 10, 10)
-        p.setBrush(QBrush(QColor("#cc5555")))
-        p.drawRoundedRect(QRectF(55, 65, 146, 40), 8, 8)
-        p.setPen(QPen(QColor("#ffffff"), 8))
-        p.drawLine(100, 135, 156, 175)
-        p.drawLine(156, 135, 100, 175)
-        
-    elif descritivo == "fonte":
-        p.setPen(QPen(QColor("#ffd700"), 14, Qt.SolidLine, Qt.RoundCap))
-        p.drawLine(85, 200, 128, 60)
-        p.drawLine(128, 60, 171, 200)
-        p.drawLine(100, 160, 156, 160)
-        
-    elif descritivo == "cores":
-        p.setBrush(QBrush(QColor("#ffffff")))
-        p.setPen(QPen(Qt.NoPen))
-        p.drawRoundedRect(QRectF(45, 45, 166, 166), 12, 12)
-        cores = ["#ff6b6b", "#ffd700", "#2d6a4f", "#00b4d8", "#9d4edd"]
-        for i, c in enumerate(cores):
-            p.setBrush(QBrush(c))
-            x = 60 + (i % 3) * 50
-            y = 60 + (i // 3) * 50
-            p.drawEllipse(QRectF(x, y, 40, 40))
-            
-    elif descritivo == "localizar":
-        p.setBrush(QBrush(Qt.NoBrush))
-        p.setPen(QPen(QColor("#00b4d8"), 10))
-        p.drawEllipse(70, 70, 100, 100)
-        p.drawLine(155, 155, 205, 205)
-        p.setBrush(QBrush(QColor("#003366")))
-        p.drawEllipse(QRectF(95, 95, 50, 50))
-        
-    elif descritivo == "teclado":
-        p.setBrush(QBrush(QColor("#6e7681")))
-        p.setPen(QPen(Qt.NoPen))
-        p.drawRoundedRect(QRectF(35, 55, 186, 146), 12, 12)
+        p.drawRoundedRect(QRectF(35, 90, 145, 120), 10, 10)
+        # Haste suporte
         p.setBrush(QBrush(QColor("#8b949e")))
-        for y in [80, 120, 160]:
-            p.drawRoundedRect(QRectF(55, y, 40, 25), 4, 4)
-            p.drawRoundedRect(QRectF(108, y, 40, 25), 4, 4)
-            p.drawRoundedRect(QRectF(161, y, 40, 25), 4, 4)
-            
-    elif descritivo == "ajuda":
+        p.drawRoundedRect(QRectF(180, 100, 30, 80), 4, 4)
+        # Detalhe filme
+        p.setBrush(QBrush(QColor("#cc5555")))
+        p.drawRoundedRect(QRectF(45, 100, 125, 40), 6, 6)
+        p.setBrush(QBrush(QColor("#e53935")))
+        p.drawEllipse(65, 112, 20, 16)
+        
+    elif tipo == "ocultar":
+        # Olho - mostrar
+        p.setBrush(QBrush(Qt.NoBrush))
+        p.setPen(QPen(QColor("#2d6a4f"), 14))
+        p.drawRoundedRect(QRectF(40, 75, 176, 100), 55, 55)
+        p.setBrush(QBrush(QColor("#2d6a4f")))
+        p.drawEllipse(88, 100, 80, 80)
+        p.setBrush(QBrush(QColor("#ffffff")))
+        p.drawEllipse(108, 120, 40, 40)
+        p.setBrush(QBrush(QColor("#0d1117")))
+        p.drawEllipse(123, 135, 20, 20)
+        
+    elif tipo == "ocultar_off":
+        # Olho riscado - ocultar 
+        p.setBrush(QBrush(Qt.NoBrush))
+        p.setPen(QPen(QColor("#ff6b6b"), 14))
+        p.drawRoundedRect(QRectF(40, 75, 176, 100), 55, 55)
+        p.setBrush(QBrush(QColor("#ff6b6b")))
+        p.drawEllipse(88, 100, 80, 80)
+        p.setBrush(QBrush(QColor("#cc5555")))
+        p.drawEllipse(108, 120, 40, 40)
+        # Risco no olho
+        p.setPen(QPen(QColor("#8b0000"), 16, Qt.SolidLine, Qt.RoundCap))
+        p.drawLine(60, 100, 196, 180)
+        
+    elif tipo == "ajuda":
+        # Ponto de interrogação - Ajuda
         p.setBrush(QBrush(QColor("#ffd700")))
         p.setPen(QPen(Qt.NoPen))
-        p.drawRoundedRect(QRectF(83, 45, 90, 165), 45, 45)
-        p.setBrush(QBrush(QColor("#0f1621")))
-        p.drawEllipse(QRectF(108, 100, 25, 25))
+        p.drawRoundedRect(QRectF(78, 40, 100, 175), 50, 50)
+        # Detalhe ponto
+        p.setBrush(QBrush(QColor("#0d1117")))
+        p.drawEllipse(103, 95, 30, 30)
+        # Ponto do ?
+        p.setBrush(QBrush(QColor("#0d1117")))
+        p.drawEllipse(113, 165, 35, 35)
         
-    elif descritivo == "sobre":
+    elif tipo == "sobre":
+        # Info - Sobre
         p.setBrush(QBrush(QColor("#2d6a4f")))
         p.setPen(QPen(Qt.NoPen))
-        p.drawRoundedRect(QRectF(95, 45, 66, 75), 10, 10)
-        p.drawRoundedRect(QRectF(108, 140, 40, 40), 20, 20)
+        p.drawRoundedRect(QRectF(90, 45, 76, 80), 12, 12)
+        p.drawRoundedRect(QRectF(108, 140, 40, 45), 20, 20)
+        # i
+        p.setBrush(QBrush(QColor("#ffffff")))
+        p.drawEllipse(113, 65, 20, 20)
+        p.setBrush(QBrush(QColor("#0d1117")))
+        p.drawPolygon([QPointF(128, 140), QPointF(128, 185), QPointF(108, 185)])
         
     p.end()
     return pix
 
 
-icons_map = {
-    "Novo.png": "novo",
-    "Abrir.png": "abrir", 
-    "Salvar.png": "salvar",
-    "Exportar.png": "exportar",
-    "Desfazer.png": "desfazer",
-    "Refazer.png": "refazer",
-    "Copiar.png": "copiar",
-    "Colar.png": "colar",
-    "Adicionar.png": "adicionar",
-    "Midia.png": "midia",
-    "Conectar.png": "conectar",
-    "Ocultar.png": "ocultar",
-    "Excluir.png": "excluir",
-    "Fonte.png": "fonte",
-    "Cores.png": "cores",
-    "Localizar.png": "localizar",
-    "TecladeAtalho.png": "teclado",
-    "Ajuda.png": "ajuda",
-    "Sobre.png": "sobre",
-}
+# Restaurar app_icon dos velhos
+import shutil
+if os.path.exists("assets/icons_old/App_icon.png"):
+    shutil.copy("assets/icons_old/App_icon.png", "assets/icons/App_icon.png")
+if os.path.exists("assets/icons_old/App_icon.ico"):
+    shutil.copy("assets/icons_old/App_icon.ico", "assets/icons/App_icon.ico")
+
+# Recriar ícones específicos (0,1,2,4,5,6,7,9,11,17,18)
+icons = [
+    ("Novo.png", "novo"),
+    ("Abrir.png", "abrir"),
+    ("Salvar.png", "salvar"),
+    ("Desfazer.png", "desfazer"),
+    ("Refazer.png", "refazer"),
+    ("Copiar.png", "copiar"),
+    ("Colar.png", "colar"),
+    ("Midia.png", "midia"),
+    ("Ocultar.png", "ocultar"),
+    ("Ajuda.png", "ajuda"),
+    ("Sobre.png", "sobre"),
+]
 
 app = QApplication([])
-output_dir = "assets/icons_new"
-os.makedirs(output_dir, exist_ok=True)
-
-for filename, descritivo in icons_map.items():
+for filename, tipo in icons:
     print(f"Criando {filename}...")
-    pix = criar_icon(filename, descritivo)
-    pix.save(f"{output_dir}/{filename}")
+    pix = criar_icon(tipo)
+    pix.save(f"assets/icons/{filename}")
 
-print(f"\nFeito! Ícones em {output_dir}/")
+# Criar versão oculta (olho riscado)
+print("Criando Ocultar_off.png...")
+pix = criar_icon("ocultar_off")
+pix.save("assets/icons/Ocultar_off.png")
+
+print("\nFeito!")
 app.quit()
