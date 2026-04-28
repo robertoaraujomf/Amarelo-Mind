@@ -293,7 +293,7 @@ class InfiniteCanvas(QGraphicsView):
         # Otimização de cache para items estáticos
         self.setCacheMode(QGraphicsView.CacheBackground)
         
-        self.setBackgroundBrush(QColor("#f7d5a1"))
+        self.setBackgroundBrush(QColor("#0f1621"))
         self.setFrameStyle(QFrame.NoFrame)
         self.setHorizontalScrollBarPolicy(Qt.ScrollBarAlwaysOff)
         self.setVerticalScrollBarPolicy(Qt.ScrollBarAlwaysOff)
@@ -794,8 +794,32 @@ class AmareloMainWindow(QMainWindow):
         tb.setContextMenuPolicy(Qt.NoContextMenu)
         self.addToolBar(tb)
 
+        # Ícones minimalistas como texto/símbolo
+        ICONS = {
+            "Novo.png": "📄",
+            "Abrir.png": "📂",
+            "Salvar.png": "💾",
+            "Exportar.png": "🖼️",
+            "Desfazer.png": "↩",
+            "Refazer.png": "↪",
+            "Copiar.png": "📋",
+            "Colar.png": "📝",
+            "Adicionar.png": "➕",
+            "Midia.png": "🎬",
+            "Conectar.png": "🔗",
+            "Ocultar.png": "👁",
+            "Excluir.png": "🗑",
+            "Fonte.png": "🔤",
+            "Cores.png": "🎨",
+            "Localizar.png": "🔍",
+            "TecladeAtalho.png": "⌨️",
+            "Ajuda.png": "❓",
+            "Sobre.png": "ℹ️",
+        }
+
         def make_action(icon, tooltip, slot, shortcut_key=None):
-            act = QAction(IconManager.load_icon(icon, icon[0]), "", self)
+            symbol = ICONS.get(icon, icon[0])
+            act = QAction(symbol, "", self)
             act.setToolTip(tooltip)
             shortcut = self.custom_shortcuts.get(shortcut_key) if shortcut_key else None
             if shortcut:
@@ -816,13 +840,13 @@ class AmareloMainWindow(QMainWindow):
 
         self.act_undo = self.undo_stack.createUndoAction(self, "")
         self.act_undo.setToolTip(f"Desfazer ({self.custom_shortcuts.get('Desfazer', 'Ctrl+Z')})")
-        self.act_undo.setIcon(IconManager.load_icon("Desfazer.png", "D"))
+        self.act_undo.setText("↩")
         self.act_undo.setShortcut(self.custom_shortcuts.get("Desfazer", "Ctrl+Z"))
         tb.addAction(self.act_undo)
 
         self.act_redo = self.undo_stack.createRedoAction(self, "")
         self.act_redo.setToolTip(f"Refazer ({self.custom_shortcuts.get('Refazer', 'Ctrl+R')})")
-        self.act_redo.setIcon(IconManager.load_icon("Refazer.png", "R"))
+        self.act_redo.setText("↪")
         self.act_redo.setShortcut(self.custom_shortcuts.get("Refazer", "Ctrl+R"))
         tb.addAction(self.act_redo)
 
@@ -1806,7 +1830,7 @@ class AmareloMainWindow(QMainWindow):
         w, h = max(1, int(rect.width())), max(1, int(rect.height()))
 
         image = QImage(w, h, QImage.Format_ARGB32)
-        image.fill(QColor("#f7d5a1"))
+        image.fill(QColor("#0f1621"))
 
         painter = QPainter(image)
         painter.setRenderHint(QPainter.Antialiasing)
