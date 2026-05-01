@@ -6,6 +6,13 @@ Amarelo Mind - Launcher with suppressed WebEngine noise.
 import sys
 import os
 
+# Suppress WebEngine warnings before any Qt imports
+os.environ.setdefault("QT_LOGGING_RULES", 
+    "qt.webengine.*=false;qt.qpa.gl=false;js.*=false;*doh*=false")
+
+# Suppress DBus portal warnings
+os.environ.setdefault("QT_NO_PORTAL", "1")
+
 # Detect if running from installed location or development
 if os.path.exists(os.path.join(os.path.dirname(os.path.abspath(__file__)), "assets")):
     # Development mode
@@ -19,11 +26,8 @@ if base_dir not in sys.path:
     sys.path.insert(0, base_dir)
 
 # Set environment variables for icon path
-os.environ["AMARELO_ICON_PATH"] = os.path.join(base_dir, "assets", "icons")
-
-# Suppress WebEngine warnings before any Qt imports
-os.environ.setdefault("QT_LOGGING_RULES", 
-    "qt.webengine.*=false;qt.qpa.gl=false;js.*=false;*doh*=false")
+icons_dir = os.path.join(base_dir, "assets", "icons")
+os.environ["AMARELO_ICON_PATH"] = icons_dir
 
 # Now import Qt and launch
 from PySide6.QtWidgets import QApplication
@@ -41,13 +45,13 @@ app.setApplicationName("AmareloMind")
 app.setApplicationDisplayName("Amarelo Mind")
 app.setDesktopFileName("AmareloMind")
 
-# Set window icon
-icon_path = os.path.join(base_dir, "assets", "icons", "App_icon.ico")
+# Set window icon - force using the recovered icons
+icon_path = os.path.join(icons_dir, "App_icon.ico")
 if os.path.exists(icon_path):
     app.setWindowIcon(QIcon(icon_path))
 else:
     # Fallback to PNG
-    icon_path = os.path.join(base_dir, "assets", "icons", "App_icon.png")
+    icon_path = os.path.join(icons_dir, "App_icon.png")
     if os.path.exists(icon_path):
         app.setWindowIcon(QIcon(icon_path))
 

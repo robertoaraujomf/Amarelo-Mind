@@ -1,0 +1,9 @@
+#!/bin/sh
+set -e
+case "$1" in
+    configure)
+        update-alternatives --install /usr/bin/amarelo-mind amarelo-mind /usr/share/amarelo-mind/run_amarelo.py 100 2>/dev/null || true
+        update-desktop-database 2>/dev/null || true
+        ;;
+esac
+exit 0

@@ -1,0 +1,14 @@
+[Desktop Entry]
+Version=1.0
+Type=Application
+Name=Amarelo Mind
+Comment=Interactive Mind Mapping Tool
+Exec=amarelo-mind %F
+Path=/usr/share/amarelo-mind
+Icon=amarelo-mind
+Terminal=false
+Categories=Office;Utility;
+MimeType=application/x-amind;
+StartupNotify=true
+StartupWMClass=amarelomind
+DBusActivatable=false

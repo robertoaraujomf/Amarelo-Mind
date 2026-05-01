@@ -1,0 +1,5 @@
+?package(amarelo-mind)
+  section="Office";
+  title "Amarelo Mind"
+  command "/usr/share/amarelo-mind/AmareloMind"
+  icon "amarelo-mind"

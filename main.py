@@ -795,7 +795,9 @@ class AmareloMainWindow(QMainWindow):
         self.addToolBar(tb)
 
         def make_action(icon, tooltip, slot, shortcut_key=None):
-            act = QAction(IconManager.load_icon(icon, icon[0]), "", self)
+            loaded_icon = IconManager.load_icon(icon, icon[0])
+            print(f"DEBUG: Loading icon '{icon}' - valid={not loaded_icon.isNull()}")
+            act = QAction(loaded_icon, "", self)
             act.setToolTip(tooltip)
             shortcut = self.custom_shortcuts.get(shortcut_key) if shortcut_key else None
             if shortcut:

@@ -1,0 +1,10 @@
+[Desktop Entry]
+Version=1.1
+Type=Application
+Name=Amarelo Mind
+Comment=Interactive Mind Mapping Tool
+Exec=/usr/share/amarelo-mind/run_amarelo.py
+Icon=amarelo-mind
+Terminal=false
+Categories=Office;Utility;
+StartupWMClass=AmareloMind

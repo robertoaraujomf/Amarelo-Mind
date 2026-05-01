@@ -1,0 +1,8 @@
+#!/bin/sh
+set -e
+case "$1" in
+    remove)
+        update-alternatives --remove amarelo-mind /usr/share/amarelo-mind/run_amarelo.py 2>/dev/null || true
+        ;;
+esac
+exit 0
