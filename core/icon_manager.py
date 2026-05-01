@@ -23,6 +23,12 @@ class IconManager:
         
         candidates = []
         
+        # 0. Environment variable (set by run_amarelo.py)
+        env_path = os.environ.get("AMARELO_ICON_PATH")
+        if env_path and os.path.isdir(env_path):
+            IconManager._icons_dir = os.path.normpath(env_path)
+            return IconManager._icons_dir
+        
         # 1. Raiz do projeto a partir de core/icon_manager.py
         try:
             _here = os.path.abspath(__file__)
