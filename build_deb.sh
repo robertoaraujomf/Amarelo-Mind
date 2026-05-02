@@ -3,7 +3,7 @@
 set -e
 
 APP_NAME="amarelo-mind"
-VERSION="1.1"
+VERSION="1.2"
 BUILD_DIR="build_deb"
 PKG_DIR="${BUILD_DIR}/${APP_NAME}_${VERSION}"
 
@@ -19,56 +19,18 @@ mkdir -p ${PKG_DIR}/usr/share/applications
 mkdir -p ${PKG_DIR}/usr/share/icons/hicolor/48x48/apps
 mkdir -p ${PKG_DIR}/DEBIAN
 
-# Copy application files
-cp -r *.py ${PKG_DIR}/usr/share/amarelo-mind/
+# Copy application files - Binary version
 cp -r assets ${PKG_DIR}/usr/share/amarelo-mind/
-cp -r items ${PKG_DIR}/usr/share/amarelo-mind/
-cp -r core ${PKG_DIR}/usr/share/amarelo-mind/
-cp -r debian ${PKG_DIR}/usr/share/amarelo-mind/
-cp amarelo.spec ${PKG_DIR}/usr/share/amarelo-mind/ 2>/dev/null || true
-cp AmareloMind.spec ${PKG_DIR}/usr/share/amarelo-mind/ 2>/dev/null || true
+cp dist/AmareloMind ${PKG_DIR}/usr/share/amarelo-mind/
+chmod +x ${PKG_DIR}/usr/share/amarelo-mind/AmareloMind
 
 # Copy icon
 cp assets/icons/App_icon.png ${PKG_DIR}/usr/share/icons/hicolor/48x48/apps/amarelo-mind.png
 
-# Create launcher script
-cat > ${PKG_DIR}/usr/share/amarelo-mind/run_amarelo.py << 'EOF'
-#!/usr/bin/env python3
-import sys
-import os
-
-# Set base directory
-base_dir = "/usr/share/amarelo-mind"
-
-# Suppress WebEngine warnings
-os.environ.setdefault("QT_LOGGING_RULES", 
-    "qt.webengine.*=false;qt.qpa.gl=false;js.*=false;*doh*=false")
-
-# Add to path
-sys.path.insert(0, base_dir)
-
-# Set icon path
-os.environ["AMarelo_ICON_PATH"] = os.path.join(base_dir, "assets", "icons", "App_icon.ico")
-
-# Import and run
-from PySide6.QtWidgets import QApplication
-from PySide6.QtGui import QIcon
-import main
-
-app = QApplication(sys.argv)
-app.setApplicationName("AmareloMind")
-app.setApplicationDisplayName("Amarelo Mind")
-
-icon_path = os.path.join(base_dir, "assets", "icons", "App_icon.ico")
-if os.path.exists(icon_path):
-    app.setWindowIcon(QIcon(icon_path))
-
-window = main.AmareloMainWindow()
-window.show()
-sys.exit(app.exec())
-EOF
-
-chmod +x ${PKG_DIR}/usr/share/amarelo-mind/run_amarelo.py
+# Create symlinks for easy execution
+mkdir -p ${PKG_DIR}/usr/bin
+ln -s /usr/share/amarelo-mind/AmareloMind ${PKG_DIR}/usr/bin/amarelo-mind
+ln -s /usr/share/amarelo-mind/AmareloMind ${PKG_DIR}/usr/bin/AmareloMind
 
 # Create desktop file
 cat > ${PKG_DIR}/usr/share/applications/amarelo-mind.desktop << EOF
@@ -76,8 +38,8 @@ cat > ${PKG_DIR}/usr/share/applications/amarelo-mind.desktop << EOF
 Version=${VERSION}
 Type=Application
 Name=Amarelo Mind
-Comment=Interactive Mind Mapping Tool
-Exec=/usr/share/amarelo-mind/run_amarelo.py
+Comment=Interactive Mind Mapping Tool with Dark Green Design
+Exec=/usr/share/amarelo-mind/AmareloMind
 Icon=amarelo-mind
 Terminal=false
 Categories=Office;Utility;
@@ -91,11 +53,11 @@ Version: ${VERSION}
 Section: office
 Priority: optional
 Architecture: amd64
-Depends: python3, python3-pyside6, libc6 (>= 2.31)
+Depends: libc6 (>= 2.34), libstdc++6, libglib2.0-0 (>= 2.68), libdbus-1-3, libxcb1, libxkbcommon0, libfontconfig1, libfreetype6
 Maintainer: Amarelo Team <team@amarelo.br>
 Description: Interactive Mind Mapping Tool
  A visual mind mapping application for creating and organizing ideas.
- Supports text nodes, connections, media embedding, and more.
+ Features dark green design, intuitive icons, and advanced node management.
 EOF
 
 # Create postinst
@@ -104,7 +66,6 @@ cat > ${PKG_DIR}/DEBIAN/postinst << 'EOF'
 set -e
 case "$1" in
     configure)
-        update-alternatives --install /usr/bin/amarelo-mind amarelo-mind /usr/share/amarelo-mind/run_amarelo.py 100 2>/dev/null || true
         update-desktop-database 2>/dev/null || true
         ;;
 esac
@@ -118,7 +79,6 @@ cat > ${PKG_DIR}/DEBIAN/prerm << 'EOF'
 set -e
 case "$1" in
     remove)
-        update-alternatives --remove amarelo-mind /usr/share/amarelo-mind/run_amarelo.py 2>/dev/null || true
         ;;
 esac
 exit 0
