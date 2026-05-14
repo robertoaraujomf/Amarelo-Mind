@@ -36,6 +36,9 @@ cp assets/icons/App_icon.png ${PKG_DIR}/usr/share/icons/hicolor/48x48/apps/amare
 cat > ${PKG_DIR}/usr/share/amarelo-mind/AmareloMind << 'LAUNCHER'
 #!/bin/bash
 cd /usr/share/amarelo-mind
+python3 -c "import PySide6" 2>/dev/null || {
+    pip3 install PySide6 2>/dev/null || pip3 install --break-system-packages PySide6 2>/dev/null || true
+}
 exec python3 /usr/share/amarelo-mind/run_amarelo.py "$@"
 LAUNCHER
 chmod +x ${PKG_DIR}/usr/share/amarelo-mind/AmareloMind
@@ -67,7 +70,7 @@ Version: ${VERSION}
 Section: office
 Priority: optional
 Architecture: amd64
-Depends: python3 (>= 3.10), python3-pyside6, python3-pyside6.qtwidgets, libc6 (>= 2.34), libstdc++6, libglib2.0-0 (>= 2.68), libdbus-1-3, libxcb1, libxkbcommon0, libfontconfig1, libfreetype6
+Depends: python3 (>= 3.10), python3-pip, libc6 (>= 2.34), libstdc++6, libglib2.0-0 (>= 2.68), libdbus-1-3, libxcb1, libxkbcommon0, libfontconfig1, libfreetype6
 Maintainer: Amarelo Team <team@amarelo.br>
 Description: Interactive Mind Mapping Tool
  A visual mind mapping application for creating and organizing ideas.
@@ -93,6 +96,7 @@ case "$1" in
     configure)
         update-desktop-database 2>/dev/null || true
         update-mime-database /usr/share/mime 2>/dev/null || true
+        xdg-mime default amarelo-mind.desktop application/x-amind 2>/dev/null || true
         ;;
 esac
 exit 0
