@@ -3,7 +3,7 @@
 set -e
 
 APP_NAME="amarelo-mind"
-VERSION="1.2"
+VERSION="1.3"
 BUILD_DIR="build_deb"
 PKG_DIR="${BUILD_DIR}/${APP_NAME}_${VERSION}"
 
@@ -12,6 +12,10 @@ echo "Building ${APP_NAME} v${VERSION}..."
 # Clean previous builds
 rm -rf ${BUILD_DIR}
 rm -f *.deb
+rm -rf dist build
+
+# Build PyInstaller binary
+pyinstaller amarelo.spec 2>&1
 
 # Create directory structure
 mkdir -p ${PKG_DIR}/usr/share/amarelo-mind
@@ -20,28 +24,13 @@ mkdir -p ${PKG_DIR}/usr/share/icons/hicolor/48x48/apps
 mkdir -p ${PKG_DIR}/usr/share/mime/packages
 mkdir -p ${PKG_DIR}/DEBIAN
 
-# Copy application files - Python source
+# Copy application files - Compiled binary
 cp -r assets ${PKG_DIR}/usr/share/amarelo-mind/
-cp main.py ${PKG_DIR}/usr/share/amarelo-mind/
-cp run_amarelo.py ${PKG_DIR}/usr/share/amarelo-mind/
-cp -r core ${PKG_DIR}/usr/share/amarelo-mind/
-cp -r items ${PKG_DIR}/usr/share/amarelo-mind/
-cp -r scripts ${PKG_DIR}/usr/share/amarelo-mind/
-cp requirements.txt ${PKG_DIR}/usr/share/amarelo-mind/
+cp dist/AmareloMind ${PKG_DIR}/usr/share/amarelo-mind/AmareloMind
+chmod +x ${PKG_DIR}/usr/share/amarelo-mind/AmareloMind
 
 # Copy icon
 cp assets/icons/App_icon.png ${PKG_DIR}/usr/share/icons/hicolor/48x48/apps/amarelo-mind.png
-
-# Create launcher script
-cat > ${PKG_DIR}/usr/share/amarelo-mind/AmareloMind << 'LAUNCHER'
-#!/bin/bash
-cd /usr/share/amarelo-mind
-python3 -c "import PySide6" 2>/dev/null || {
-    pip3 install PySide6 2>/dev/null || pip3 install --break-system-packages PySide6 2>/dev/null || true
-}
-exec python3 /usr/share/amarelo-mind/run_amarelo.py "$@"
-LAUNCHER
-chmod +x ${PKG_DIR}/usr/share/amarelo-mind/AmareloMind
 
 # Create symlinks for easy execution
 mkdir -p ${PKG_DIR}/usr/bin
@@ -70,7 +59,7 @@ Version: ${VERSION}
 Section: office
 Priority: optional
 Architecture: amd64
-Depends: python3 (>= 3.10), python3-pip, libc6 (>= 2.34), libstdc++6, libglib2.0-0 (>= 2.68), libdbus-1-3, libxcb1, libxkbcommon0, libfontconfig1, libfreetype6
+Depends: libc6 (>= 2.34), libstdc++6, libglib2.0-0 (>= 2.68), libdbus-1-3, libxcb1, libxkbcommon0, libfontconfig1, libfreetype6
 Maintainer: Amarelo Team <team@amarelo.br>
 Description: Interactive Mind Mapping Tool
  A visual mind mapping application for creating and organizing ideas.

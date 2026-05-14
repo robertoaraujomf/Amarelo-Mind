@@ -13,8 +13,6 @@ a = Analysis(
         'cv2',
         'PySide6.QtMultimedia',
         'PySide6.QtMultimediaWidgets',
-        'PySide6.QtWebEngineCore',
-        'PySide6.QtWebEngineWidgets',
     ],
     hookspath=[],
     runtime_hooks=[],
