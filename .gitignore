@@ -21,3 +21,6 @@ dist/
 build/
 Output/
 *.spec
+
+# Build output
+build_deb/

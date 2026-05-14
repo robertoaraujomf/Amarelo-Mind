@@ -17,15 +17,28 @@ rm -f *.deb
 mkdir -p ${PKG_DIR}/usr/share/amarelo-mind
 mkdir -p ${PKG_DIR}/usr/share/applications
 mkdir -p ${PKG_DIR}/usr/share/icons/hicolor/48x48/apps
+mkdir -p ${PKG_DIR}/usr/share/mime/packages
 mkdir -p ${PKG_DIR}/DEBIAN
 
-# Copy application files - Binary version
+# Copy application files - Python source
 cp -r assets ${PKG_DIR}/usr/share/amarelo-mind/
-cp dist/AmareloMind ${PKG_DIR}/usr/share/amarelo-mind/
-chmod +x ${PKG_DIR}/usr/share/amarelo-mind/AmareloMind
+cp main.py ${PKG_DIR}/usr/share/amarelo-mind/
+cp run_amarelo.py ${PKG_DIR}/usr/share/amarelo-mind/
+cp -r core ${PKG_DIR}/usr/share/amarelo-mind/
+cp -r items ${PKG_DIR}/usr/share/amarelo-mind/
+cp -r scripts ${PKG_DIR}/usr/share/amarelo-mind/
+cp requirements.txt ${PKG_DIR}/usr/share/amarelo-mind/
 
 # Copy icon
 cp assets/icons/App_icon.png ${PKG_DIR}/usr/share/icons/hicolor/48x48/apps/amarelo-mind.png
+
+# Create launcher script
+cat > ${PKG_DIR}/usr/share/amarelo-mind/AmareloMind << 'LAUNCHER'
+#!/bin/bash
+cd /usr/share/amarelo-mind
+exec python3 /usr/share/amarelo-mind/run_amarelo.py "$@"
+LAUNCHER
+chmod +x ${PKG_DIR}/usr/share/amarelo-mind/AmareloMind
 
 # Create symlinks for easy execution
 mkdir -p ${PKG_DIR}/usr/bin
@@ -39,10 +52,11 @@ Version=${VERSION}
 Type=Application
 Name=Amarelo Mind
 Comment=Interactive Mind Mapping Tool with Dark Green Design
-Exec=/usr/share/amarelo-mind/AmareloMind
+Exec=/usr/share/amarelo-mind/AmareloMind %f
 Icon=amarelo-mind
 Terminal=false
 Categories=Office;Utility;
+MimeType=application/x-amind;
 StartupWMClass=AmareloMind
 EOF
 
@@ -53,11 +67,22 @@ Version: ${VERSION}
 Section: office
 Priority: optional
 Architecture: amd64
-Depends: libc6 (>= 2.34), libstdc++6, libglib2.0-0 (>= 2.68), libdbus-1-3, libxcb1, libxkbcommon0, libfontconfig1, libfreetype6
+Depends: python3 (>= 3.10), python3-pyside6, python3-pyside6.qtwidgets, libc6 (>= 2.34), libstdc++6, libglib2.0-0 (>= 2.68), libdbus-1-3, libxcb1, libxkbcommon0, libfontconfig1, libfreetype6
 Maintainer: Amarelo Team <team@amarelo.br>
 Description: Interactive Mind Mapping Tool
  A visual mind mapping application for creating and organizing ideas.
  Features dark green design, intuitive icons, and advanced node management.
+EOF
+
+# Create MIME XML for .amind file association
+cat > ${PKG_DIR}/usr/share/mime/packages/amarelo-mind.xml << 'EOF'
+<?xml version="1.0" encoding="UTF-8"?>
+<mime-info xmlns="http://www.freedesktop.org/standards/shared-mime-info">
+  <mime-type type="application/x-amind">
+    <comment>Amarelo Mind Map</comment>
+    <glob pattern="*.amind"/>
+  </mime-type>
+</mime-info>
 EOF
 
 # Create postinst
@@ -67,6 +92,7 @@ set -e
 case "$1" in
     configure)
         update-desktop-database 2>/dev/null || true
+        update-mime-database /usr/share/mime 2>/dev/null || true
         ;;
 esac
 exit 0
@@ -79,6 +105,8 @@ cat > ${PKG_DIR}/DEBIAN/prerm << 'EOF'
 set -e
 case "$1" in
     remove)
+        update-desktop-database 2>/dev/null || true
+        update-mime-database /usr/share/mime 2>/dev/null || true
         ;;
 esac
 exit 0
@@ -88,5 +116,5 @@ chmod +x ${PKG_DIR}/DEBIAN/prerm
 # Build package
 dpkg-deb --build ${PKG_DIR}
 
-echo "Done! Package: ${APP_NAME}_${VERSION}.deb"
-ls -lh *.deb
+echo "Done! Package: ${PKG_DIR}.deb"
+ls -lh ${PKG_DIR}.deb
