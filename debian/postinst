@@ -3,7 +3,36 @@ set -e
 
 case "$1" in
     configure)
-        update-alternatives --install /usr/bin/amarelo-mind amarelo-mind /usr/share/amarelo-mind/AmareloMind 100 2>/dev/null || true
+        update-desktop-database || true
+        update-mime-database /usr/share/mime || true
+        xdg-mime default amarelo-mind.desktop application/x-amind || true
+
+        for user_home in /home/* /root; do
+            [ -d "$user_home" ] || continue
+            mimeapps="$user_home/.config/mimeapps.list"
+            if [ -f "$mimeapps" ]; then
+                sed -i '/^application\/x-amind=/d' "$mimeapps" 2>/dev/null || true
+            fi
+            rm -f "$user_home/.local/share/applications/amarelo-mind.desktop" 2>/dev/null || true
+            rm -f "$user_home/.local/share/applications/AmareloMind.desktop" 2>/dev/null || true
+            rm -f "$user_home/.local/share/applications/mimeinfo.cache" 2>/dev/null || true
+        done
+
+        gtk-update-icon-cache -f /usr/share/icons/hicolor 2>/dev/null || true
+
+        active_theme=$(gsettings get org.cinnamon.desktop.interface icon-theme 2>/dev/null || \
+                       gsettings get org.gnome.desktop.interface icon-theme 2>/dev/null || echo "")
+        active_theme=$(echo "$active_theme" | tr -d "'")
+        [ -n "$active_theme" ] && [ -d "/usr/share/icons/$active_theme" ] || active_theme=""
+        for theme in $active_theme hicolor; do
+            [ -d "/usr/share/icons/$theme" ] || continue
+            for size_dir in /usr/share/icons/$theme/*/mimetypes/; do
+                [ -d "$size_dir" ] || continue
+                cp /usr/share/icons/hicolor/48x48/mimetypes/application-x-amind.png \
+                   "$size_dir/application-x-amind.png" 2>/dev/null || true
+            done
+            gtk-update-icon-cache -f "/usr/share/icons/$theme" 2>/dev/null || true
+        done
         ;;
 esac
 
