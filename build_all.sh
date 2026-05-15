@@ -2,7 +2,7 @@
 # Cross-platform build script for Amarelo Mind
 set -e
 
-VERSION="1.3"
+VERSION="1.4"
 echo "=========================================="
 echo " Amarelo Mind v${VERSION} - Multi-Platform Build"
 echo "=========================================="

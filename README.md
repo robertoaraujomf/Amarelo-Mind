@@ -265,6 +265,6 @@ Para dúvidas ou relatórios de bugs, consulte:
 
 ---
 
-**Versão**: 1.0  
-**Última Atualização**: Janeiro 2026  
+**Versão**: 1.4  
+**Última Atualização**: Maio 2026  
 **Autor**: Desenvolvedor Amarelo Mind

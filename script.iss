@@ -2,7 +2,7 @@
 ; Requires: Inno Setup (https://jrsoftware.org/isinfo.php)
 
 #define MyAppName "Amarelo Mind"
-#define MyAppVersion "1.3"
+#define MyAppVersion "1.4"
 #define MyAppPublisher "Amarelo"
 #define MyAppExeName "AmareloMind.exe"
 #define MyAppAssocName MyAppName + " File"
