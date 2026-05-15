@@ -1,43 +1,40 @@
 #!/bin/bash
-# Build script for Amarelo Mind
 set -e
 
 APP_NAME="amarelo-mind"
-VERSION="1.3"
+VERSION="1.4"
 BUILD_DIR="build_deb"
 PKG_DIR="${BUILD_DIR}/${APP_NAME}_${VERSION}"
 
 echo "Building ${APP_NAME} v${VERSION}..."
 
-# Clean previous builds
 rm -rf ${BUILD_DIR}
 rm -f *.deb
 rm -rf dist build
 
-# Build PyInstaller binary
 pyinstaller amarelo.spec 2>&1
 
-# Create directory structure
 mkdir -p ${PKG_DIR}/usr/share/amarelo-mind
 mkdir -p ${PKG_DIR}/usr/share/applications
 mkdir -p ${PKG_DIR}/usr/share/icons/hicolor/48x48/apps
 mkdir -p ${PKG_DIR}/usr/share/mime/packages
 mkdir -p ${PKG_DIR}/DEBIAN
 
-# Copy application files - Compiled binary
 cp -r assets ${PKG_DIR}/usr/share/amarelo-mind/
 cp dist/AmareloMind ${PKG_DIR}/usr/share/amarelo-mind/AmareloMind
 chmod +x ${PKG_DIR}/usr/share/amarelo-mind/AmareloMind
 
-# Copy icon
 cp assets/icons/App_icon.png ${PKG_DIR}/usr/share/icons/hicolor/48x48/apps/amarelo-mind.png
 
-# Create symlinks for easy execution
+for size in 16 24 32 48 64 128 256; do
+    mkdir -p ${PKG_DIR}/usr/share/icons/hicolor/${size}x${size}/mimetypes
+    cp assets/icons/files_amind_icon.png ${PKG_DIR}/usr/share/icons/hicolor/${size}x${size}/mimetypes/application-x-amind.png
+done
+
 mkdir -p ${PKG_DIR}/usr/bin
 ln -s /usr/share/amarelo-mind/AmareloMind ${PKG_DIR}/usr/bin/amarelo-mind
 ln -s /usr/share/amarelo-mind/AmareloMind ${PKG_DIR}/usr/bin/AmareloMind
 
-# Create desktop file
 cat > ${PKG_DIR}/usr/share/applications/amarelo-mind.desktop << EOF
 [Desktop Entry]
 Version=${VERSION}
@@ -52,7 +49,16 @@ MimeType=application/x-amind;
 StartupWMClass=AmareloMind
 EOF
 
-# Create DEBIAN/control
+cat > ${PKG_DIR}/usr/share/mime/packages/amarelo-mind.xml << 'EOF'
+<?xml version="1.0" encoding="UTF-8"?>
+<mime-info xmlns="http://www.freedesktop.org/standards/shared-mime-info">
+  <mime-type type="application/x-amind">
+    <comment>Amarelo Mind Map</comment>
+    <glob pattern="*.amind"/>
+  </mime-type>
+</mime-info>
+EOF
+
 cat > ${PKG_DIR}/DEBIAN/control << EOF
 Package: ${APP_NAME}
 Version: ${VERSION}
@@ -66,47 +72,78 @@ Description: Interactive Mind Mapping Tool
  Features dark green design, intuitive icons, and advanced node management.
 EOF
 
-# Create MIME XML for .amind file association
-cat > ${PKG_DIR}/usr/share/mime/packages/amarelo-mind.xml << 'EOF'
-<?xml version="1.0" encoding="UTF-8"?>
-<mime-info xmlns="http://www.freedesktop.org/standards/shared-mime-info">
-  <mime-type type="application/x-amind">
-    <comment>Amarelo Mind Map</comment>
-    <glob pattern="*.amind"/>
-  </mime-type>
-</mime-info>
-EOF
-
-# Create postinst
 cat > ${PKG_DIR}/DEBIAN/postinst << 'EOF'
 #!/bin/sh
 set -e
 case "$1" in
     configure)
-        update-desktop-database 2>/dev/null || true
-        update-mime-database /usr/share/mime 2>/dev/null || true
-        xdg-mime default amarelo-mind.desktop application/x-amind 2>/dev/null || true
+        update-desktop-database || true
+        update-mime-database /usr/share/mime || true
+        xdg-mime default amarelo-mind.desktop application/x-amind || true
+
+        for user_home in /home/* /root; do
+            [ -d "$user_home" ] || continue
+            mimeapps="$user_home/.config/mimeapps.list"
+            if [ -f "$mimeapps" ]; then
+                sed -i '/^application\/x-amind=/d' "$mimeapps" 2>/dev/null || true
+            fi
+            rm -f "$user_home/.local/share/applications/amarelo-mind.desktop" 2>/dev/null || true
+            rm -f "$user_home/.local/share/applications/AmareloMind.desktop" 2>/dev/null || true
+            rm -f "$user_home/.local/share/applications/mimeinfo.cache" 2>/dev/null || true
+        done
+
+        gtk-update-icon-cache -f /usr/share/icons/hicolor 2>/dev/null || true
+
+        active_theme=$(gsettings get org.cinnamon.desktop.interface icon-theme 2>/dev/null || \
+                       gsettings get org.gnome.desktop.interface icon-theme 2>/dev/null || echo "")
+        active_theme=$(echo "$active_theme" | tr -d "'")
+        [ -n "$active_theme" ] && [ -d "/usr/share/icons/$active_theme" ] || active_theme=""
+        for theme in $active_theme hicolor; do
+            [ -d "/usr/share/icons/$theme" ] || continue
+            for size_dir in /usr/share/icons/$theme/*/mimetypes/; do
+                [ -d "$size_dir" ] || continue
+                cp /usr/share/icons/hicolor/48x48/mimetypes/application-x-amind.png \
+                   "$size_dir/application-x-amind.png" 2>/dev/null || true
+            done
+            gtk-update-icon-cache -f "/usr/share/icons/$theme" 2>/dev/null || true
+        done
         ;;
 esac
 exit 0
 EOF
 chmod +x ${PKG_DIR}/DEBIAN/postinst
 
-# Create prerm
+cat > ${PKG_DIR}/DEBIAN/postrm << 'EOF'
+#!/bin/sh
+set -e
+case "$1" in
+    purge)
+        rm -f /usr/share/mime/packages/amarelo-mind.xml
+        update-mime-database /usr/share/mime || true
+        update-desktop-database || true
+        rm -f /usr/share/icons/hicolor/*/mimetypes/application-x-amind.png
+        gtk-update-icon-cache /usr/share/icons/hicolor 2>/dev/null || true
+        ;;
+    remove|upgrade|disappear)
+        ;;
+esac
+exit 0
+EOF
+chmod +x ${PKG_DIR}/DEBIAN/postrm
+
 cat > ${PKG_DIR}/DEBIAN/prerm << 'EOF'
 #!/bin/sh
 set -e
 case "$1" in
-    remove)
-        update-desktop-database 2>/dev/null || true
-        update-mime-database /usr/share/mime 2>/dev/null || true
+    remove|upgrade|deconfigure)
+        update-desktop-database || true
+        update-mime-database /usr/share/mime || true
         ;;
 esac
 exit 0
 EOF
 chmod +x ${PKG_DIR}/DEBIAN/prerm
 
-# Build package
 dpkg-deb --build ${PKG_DIR}
 
 echo "Done! Package: ${PKG_DIR}.deb"

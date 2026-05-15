@@ -12,16 +12,16 @@ __pycache__/
 .vscode/
 .idea/
 
-# Arquivos de log e sistema
+# Logs e sistema
 *.log
 .DS_Store
+Thumbs.db
 
-# PyInstaller
+# PyInstaller output
 dist/
 build/
 Output/
-*.spec
 
-# Build output
+# Build artifacts
 build_deb/
 *.deb

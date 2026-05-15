@@ -2395,7 +2395,7 @@ class AmareloMainWindow(QMainWindow):
         about_text = """
 <h2>Amarelo Mind</h2>
 
-<p><b>Versão 1.0.0</b></p>
+<p><b>Versão 1.2</b></p>
 
 <p>Um aplicativo de mapa mental moderno e intuitivo.</p>
 
