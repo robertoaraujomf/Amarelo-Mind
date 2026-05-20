@@ -1,14 +1,12 @@
 [Desktop Entry]
-Version=1.0
+Version=1.5
 Type=Application
 Name=Amarelo Mind
-Comment=Interactive Mind Mapping Tool
-Exec=amarelo-mind %F
-Path=/usr/share/amarelo-mind
+Comment=Interactive Mind Mapping Tool with Dark Green Design
+Exec=env QT_NO_PORTAL=1 /usr/share/amarelo-mind/AmareloMind -name amarelo-mind %f
 Icon=amarelo-mind
 Terminal=false
 Categories=Office;Utility;
 MimeType=application/x-amind;
-StartupNotify=true
-StartupWMClass=amarelomind
-DBusActivatable=false
+StartupNotify=false
+StartupWMClass=amarelo-mind

@@ -3,7 +3,7 @@ REM Build script for Amarelo Mind - Windows
 REM Requires: Python 3, PyInstaller, Inno Setup (for .exe installer)
 
 set APP_NAME=AmareloMind
-set VERSION=1.4
+set VERSION=1.5
 
 echo Building %APP_NAME% v%VERSION% for Windows...
 

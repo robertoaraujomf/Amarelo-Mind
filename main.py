@@ -722,8 +722,6 @@ class AmareloMainWindow(QMainWindow):
         self._connect_text_signals()
         self.update_button_states()
 
-        self.showMaximized()
-
     def _connect_text_signals(self):
         """Conecta sinais de seleção de texto em todos os itens StyledNode"""
         for item in self.scene.items():
@@ -762,7 +760,9 @@ class AmareloMainWindow(QMainWindow):
                 self.setStyleSheet(f.read())
 
     def _get_shortcuts_file(self):
-        return os.path.join(BASE_DIR, "shortcuts.json")
+        config_dir = os.path.join(os.path.expanduser("~"), ".config", "amarelo-mind")
+        os.makedirs(config_dir, exist_ok=True)
+        return os.path.join(config_dir, "shortcuts.json")
 
     def load_shortcuts_from_file(self):
         shortcuts_file = self._get_shortcuts_file()
@@ -2135,7 +2135,7 @@ class AmareloMainWindow(QMainWindow):
         from PySide6.QtWidgets import (QDialog, QVBoxLayout, QHBoxLayout, QTableWidget, 
                                        QTableWidgetItem, QPushButton, QLabel, QHeaderView, 
                                        QMessageBox, QLineEdit)
-        from PySide6.QtCore import Qt, QEvent
+        from PySide6.QtCore import Qt, QEvent, QObject
         
         all_buttons = [
             "Novo", "Abrir", "Salvar", "Exportar", "Desfazer", "Refazer",
@@ -2184,72 +2184,81 @@ class AmareloMainWindow(QMainWindow):
         
         btn_layout = QHBoxLayout()
         
-        selected_row = [0]
-        
-        def handle_key_event(event):
-            row = table.currentRow()
-            if row < 0:
+        class ShortcutFilter(QObject):
+            def __init__(self, tbl, edits, btns):
+                super().__init__()
+                self.tbl = tbl
+                self.edits = edits
+                self.btns = btns
+            
+            def eventFilter(self, obj, event):
+                if event.type() == QEvent.KeyPress:
+                    row = self.tbl.currentRow()
+                    if row < 0:
+                        return False
+                    
+                    key = event.key()
+                    modifiers = event.modifiers()
+                    
+                    if key == Qt.Key_Escape:
+                        self.edits[self.btns[row]].setText("")
+                        event.accept()
+                        return True
+                    
+                    if key in (Qt.Key_Control, Qt.Key_Shift, Qt.Key_Alt, Qt.Key_Meta,
+                               Qt.Key_Tab, Qt.Key_Backtab, Qt.Key_Return, Qt.Key_Enter):
+                        return False
+                    
+                    combo = []
+                    if modifiers & Qt.ControlModifier:
+                        combo.append("Ctrl")
+                    if modifiers & Qt.AltModifier:
+                        combo.append("Alt")
+                    if modifiers & Qt.ShiftModifier:
+                        combo.append("Shift")
+                    if modifiers & Qt.MetaModifier:
+                        combo.append("Meta")
+                    
+                    key_name = ""
+                    if key == Qt.Key_Space:
+                        key_name = "Space"
+                    elif key == Qt.Key_Return:
+                        key_name = "Enter"
+                    elif key == Qt.Key_Backspace:
+                        key_name = "Backspace"
+                    elif key == Qt.Key_Delete:
+                        key_name = "Delete"
+                    elif key == Qt.Key_Tab:
+                        key_name = "Tab"
+                    elif Qt.Key_F1 <= key <= Qt.Key_F12:
+                        key_name = f"F{key - Qt.Key_F1 + 1}"
+                    elif key == Qt.Key_Left:
+                        key_name = "Left"
+                    elif key == Qt.Key_Right:
+                        key_name = "Right"
+                    elif key == Qt.Key_Up:
+                        key_name = "Up"
+                    elif key == Qt.Key_Down:
+                        key_name = "Down"
+                    else:
+                        key_text = event.text()
+                        if key_text and key_text.isprintable():
+                            key_name = key_text.upper()
+                    
+                    if key_name:
+                        combo.append(key_name)
+                    
+                    if combo:
+                        self.edits[self.btns[row]].setText("+".join(combo))
+                        event.accept()
+                        return True
+                    
+                    return False
                 return False
-            
-            key = event.key()
-            modifiers = event.modifiers()
-            
-            if key == Qt.Key_Escape:
-                shortcut_edits[all_buttons[row]].setText("")
-                event.accept()
-                return True
-            
-            if key in (Qt.Key_Control, Qt.Key_Shift, Qt.Key_Alt, Qt.Key_Meta, 
-                       Qt.Key_Tab, Qt.Key_Backtab, Qt.Key_Return, Qt.Key_Enter):
-                return False
-            
-            combo = []
-            if modifiers & Qt.ControlModifier:
-                combo.append("Ctrl")
-            if modifiers & Qt.AltModifier:
-                combo.append("Alt")
-            if modifiers & Qt.ShiftModifier:
-                combo.append("Shift")
-            if modifiers & Qt.MetaModifier:
-                combo.append("Meta")
-            
-            key_name = ""
-            if key == Qt.Key_Space:
-                key_name = "Space"
-            elif key == Qt.Key_Return:
-                key_name = "Enter"
-            elif key == Qt.Key_Backspace:
-                key_name = "Backspace"
-            elif key == Qt.Key_Delete:
-                key_name = "Delete"
-            elif key == Qt.Key_Tab:
-                key_name = "Tab"
-            elif Qt.Key_F1 <= key <= Qt.Key_F12:
-                key_name = f"F{key - Qt.Key_F1 + 1}"
-            elif key == Qt.Key_Left:
-                key_name = "Left"
-            elif key == Qt.Key_Right:
-                key_name = "Right"
-            elif key == Qt.Key_Up:
-                key_name = "Up"
-            elif key == Qt.Key_Down:
-                key_name = "Down"
-            else:
-                key_text = event.text()
-                if key_text and key_text.isprintable():
-                    key_name = key_text.upper()
-            
-            if key_name:
-                combo.append(key_name)
-            
-            if combo:
-                shortcut_edits[all_buttons[row]].setText("+".join(combo))
-                event.accept()
-                return True
-            
-            return False
         
-        dialog.keyPressEvent = handle_key_event
+        shortcut_filter = ShortcutFilter(table, shortcut_edits, all_buttons)
+        dialog.installEventFilter(shortcut_filter)
+        table.installEventFilter(shortcut_filter)
         
         def apply_shortcuts():
             for name, edit in shortcut_edits.items():
@@ -2395,7 +2404,7 @@ class AmareloMainWindow(QMainWindow):
         about_text = """
 <h2>Amarelo Mind</h2>
 
-<p><b>Versão 1.4</b></p>
+<p><b>Versão 1.5</b></p>
 
 <p>Um aplicativo de mapa mental moderno e intuitivo.</p>
 
@@ -2601,9 +2610,9 @@ if __name__ == "__main__":
     app.setStyle("Fusion")
     
     # App identity for proper panel integration (fixes duplicate icon issue)
-    app.setApplicationName("AmareloMind")
+    app.setApplicationName("amarelo-mind")
     app.setApplicationDisplayName("Amarelo Mind")
-    app.setDesktopFileName("AmareloMind")
+    app.setDesktopFileName("amarelo-mind")
     
     # Registrar ícone para arquivos .amind (Windows only)
     try:
@@ -2620,6 +2629,6 @@ if __name__ == "__main__":
     except Exception:
         pass
     
-    window.show()
+    window.showMaximized()
     
     sys.exit(app.exec())

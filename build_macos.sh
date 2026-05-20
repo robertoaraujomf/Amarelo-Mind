@@ -4,7 +4,7 @@
 set -e
 
 APP_NAME="AmareloMind"
-VERSION="1.4"
+VERSION="1.5"
 BUILD_DIR="dist/macos"
 
 echo "Building ${APP_NAME} v${VERSION} for macOS..."

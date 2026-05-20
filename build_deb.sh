@@ -2,7 +2,7 @@
 set -e
 
 APP_NAME="amarelo-mind"
-VERSION="1.4"
+VERSION="1.5"
 BUILD_DIR="build_deb"
 PKG_DIR="${BUILD_DIR}/${APP_NAME}_${VERSION}"
 
@@ -26,10 +26,7 @@ chmod +x ${PKG_DIR}/usr/share/amarelo-mind/AmareloMind
 
 cp assets/icons/App_icon.png ${PKG_DIR}/usr/share/icons/hicolor/48x48/apps/amarelo-mind.png
 
-<<<<<<< HEAD
-=======
 # Copy MIME type icon for .amind files to all standard sizes
->>>>>>> 8bf0dc5 (fix: ícone .amind em todos os tamanhos e temas de ícone ativos)
 for size in 16 24 32 48 64 128 256; do
     mkdir -p ${PKG_DIR}/usr/share/icons/hicolor/${size}x${size}/mimetypes
     cp assets/icons/files_amind_icon.png ${PKG_DIR}/usr/share/icons/hicolor/${size}x${size}/mimetypes/application-x-amind.png
@@ -45,12 +42,13 @@ Version=${VERSION}
 Type=Application
 Name=Amarelo Mind
 Comment=Interactive Mind Mapping Tool with Dark Green Design
-Exec=/usr/share/amarelo-mind/AmareloMind %f
+Exec=env QT_NO_PORTAL=1 /usr/share/amarelo-mind/AmareloMind -name amarelo-mind %f
 Icon=amarelo-mind
 Terminal=false
 Categories=Office;Utility;
 MimeType=application/x-amind;
-StartupWMClass=AmareloMind
+StartupNotify=false
+StartupWMClass=amarelo-mind
 EOF
 
 cat > ${PKG_DIR}/usr/share/mime/packages/amarelo-mind.xml << 'EOF'
