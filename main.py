@@ -2171,9 +2171,12 @@ class AmareloMainWindow(QMainWindow):
             shortcut_edit.setReadOnly(True)
             shortcut_edit.setPlaceholderText("Pressione teclas...")
             shortcut_edit.setText(self.custom_shortcuts.get(name, ""))
-            shortcut_edit.setMinimumWidth(120)
+            shortcut_edit.setMinimumWidth(140)
+            shortcut_edit.setAlignment(Qt.AlignCenter)
+            shortcut_edit.setMinimumHeight(40)
             shortcut_edits[name] = shortcut_edit
             table.setCellWidget(i, 1, shortcut_edit)
+            table.setRowHeight(i, 48)
         
         table.resizeRowsToContents()
         layout.addWidget(table)
@@ -2259,6 +2262,8 @@ class AmareloMainWindow(QMainWindow):
         shortcut_filter = ShortcutFilter(table, shortcut_edits, all_buttons)
         dialog.installEventFilter(shortcut_filter)
         table.installEventFilter(shortcut_filter)
+        for edit in shortcut_edits.values():
+            edit.installEventFilter(shortcut_filter)
         
         def apply_shortcuts():
             for name, edit in shortcut_edits.items():
@@ -2305,6 +2310,9 @@ class AmareloMainWindow(QMainWindow):
                 self.act_colors.setShortcut(self.custom_shortcuts.get("Cores", ""))
             
             self.act_search.setShortcut(self.custom_shortcuts.get("Localizar", ""))
+            
+            if hasattr(self, 'act_hide'):
+                self.act_hide.setShortcut(self.custom_shortcuts.get("Ocultar", ""))
         
         save_btn = QPushButton("Salvar")
         save_btn.clicked.connect(apply_shortcuts)
