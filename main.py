@@ -1848,10 +1848,10 @@ class AmareloMainWindow(QMainWindow):
             self.undo_stack.push(cmd)
 
     def _update_window_title(self):
-        """Atualiza a barra de título: Amarelo Mind - nome.amind ou Amarelo Mind"""
+        """Atualiza a barra de título: nome.amind - Amarelo Mind ou Amarelo Mind"""
         if self.current_file:
             name = os.path.basename(self.current_file)
-            self.setWindowTitle(f"Amarelo Mind - {name}")
+            self.setWindowTitle(f"{name} - Amarelo Mind")
         else:
             self.setWindowTitle("Amarelo Mind")
 
