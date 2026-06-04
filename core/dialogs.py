@@ -83,7 +83,7 @@ class FontStyleDialog(QDialog):
     def _make_toggle_btn(self, label, style_char, attr_name):
         btn = QPushButton(label)
         btn.setCheckable(True)
-        btn.setMaximumWidth(100)
+        btn.setMinimumWidth(90)
         font = QFont()
         font.setBold(True)
         btn.setFont(font)
@@ -114,6 +114,8 @@ class FontStyleDialog(QDialog):
     
     def get_format(self):
         fmt = QTextCharFormat()
+        fmt.setFontFamily(self.font_family_combo.currentText())
+        fmt.setFontPointSize(self.size_spin.value())
         fmt.setFontWeight(QFont.Weight.Bold if self.bold_btn.isChecked() else QFont.Weight.Normal)
         fmt.setFontItalic(self.italic_btn.isChecked())
         fmt.setFontUnderline(self.underline_btn.isChecked())

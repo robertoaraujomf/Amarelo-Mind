@@ -10,9 +10,6 @@ import os
 os.environ.setdefault("QT_LOGGING_RULES",
     "qt.webengine.*=false;qt.qpa.gl=false;js.*=false;*doh*=false")
 
-# Suppress DBus portal warnings
-os.environ.setdefault("QT_NO_PORTAL", "1")
-
 # Detect if running from installed location or development
 if os.path.exists(os.path.join(os.path.dirname(os.path.abspath(__file__)), "assets")):
     base_dir = os.path.dirname(os.path.abspath(__file__))
@@ -32,9 +29,8 @@ import main
 
 app = QApplication.instance() or QApplication(sys.argv)
 
-app.setApplicationName("amarelo-mind")
+app.setApplicationName("AmareloMind")
 app.setApplicationDisplayName("Amarelo Mind")
-app.setDesktopFileName("amarelo-mind")
 
 icon_path = os.path.join(icons_dir, "App_icon.ico")
 if os.path.exists(icon_path):
@@ -54,11 +50,6 @@ window = main.AmareloMainWindow()
 
 if file_to_load:
     window.load_file(file_to_load)
-
-try:
-    window.setWindowRole("main")
-except Exception:
-    pass
 
 window.showMaximized()
 

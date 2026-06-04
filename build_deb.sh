@@ -2,7 +2,7 @@
 set -e
 
 APP_NAME="amarelo-mind"
-VERSION="1.5"
+VERSION="1.5.1"
 BUILD_DIR="build_deb"
 PKG_DIR="${BUILD_DIR}/${APP_NAME}_${VERSION}"
 
@@ -42,13 +42,13 @@ Version=${VERSION}
 Type=Application
 Name=Amarelo Mind
 Comment=Interactive Mind Mapping Tool with Dark Green Design
-Exec=env QT_NO_PORTAL=1 /usr/share/amarelo-mind/AmareloMind -name amarelo-mind %f
+Exec=/usr/share/amarelo-mind/AmareloMind %f
 Icon=amarelo-mind
 Terminal=false
 Categories=Office;Utility;
 MimeType=application/x-amind;
 StartupNotify=false
-StartupWMClass=amarelo-mind
+StartupWMClass=AmareloMind
 EOF
 
 cat > ${PKG_DIR}/usr/share/mime/packages/amarelo-mind.xml << 'EOF'

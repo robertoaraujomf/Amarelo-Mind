@@ -4,7 +4,8 @@ from PySide6.QtWidgets import (
 )
 from PySide6.QtCore import Qt, QRectF, QPointF, QObject, Signal
 from PySide6.QtGui import (
-    QColor, QBrush, QLinearGradient, QFont, QPen, QPainter, QTextCursor, QTextOption
+    QColor, QBrush, QLinearGradient, QFont, QPen, QPainter, QPainterPath,
+    QTextCursor, QTextOption
 )
 from .node_styles import NODE_COLORS, NODE_STATE
 
@@ -123,6 +124,7 @@ class StyledNode(QGraphicsRectItem):
         self.node_type = node_type
         self.custom_color = None  # Stores custom background color hex if set
         self.has_shadow = True
+        self._is_title = False
         self.width = w
         self.height = h
 
@@ -187,15 +189,24 @@ class StyledNode(QGraphicsRectItem):
         # Obter dimensões reais do texto
         text_rect = self.text.boundingRect()
         th = text_rect.height()
+        tw = text_rect.width()
         
-        # Calcular posição Y para centralizar verticalmente
-        y = (r.height() - th) / 2
+        if self._is_title:
+            # Centralizar texto no círculo
+            cx = r.width() / 2
+            cy = r.height() / 2
+            x = cx - tw / 2
+            y = cy - th / 2
+        else:
+            # Calcular posição Y para centralizar verticalmente
+            y = (r.height() - th) / 2
+            
+            # Manter X em 10 (margem esquerda)
+            x = 10
         
         # Garantir que não fique negativo
+        x = max(5, x)
         y = max(5, y)
-        
-        # Manter X em 10 (margem esquerda)
-        x = 10
         
         # Aplicar posição
         self.text.setPos(x, y)
@@ -204,6 +215,9 @@ class StyledNode(QGraphicsRectItem):
         self.text.update()
 
     def _adjust_rect_to_text(self):
+        if self._is_title:
+            self._center_text_vertical()
+            return
         doc = self.text.document()
         if not doc.isEmpty():
             self.prepareGeometryChange()
@@ -247,7 +261,16 @@ class StyledNode(QGraphicsRectItem):
         for h in self.handles.values():
             h.setVisible(visible)
 
+    def shape(self):
+        if self._is_title:
+            path = QPainterPath()
+            path.addEllipse(self.rect())
+            return path
+        return super().shape()
+
     def resize_from_corner(self, corner, scene_pos):
+        if self._is_title:
+            return
         self.prepareGeometryChange()
         local = self.mapFromScene(scene_pos)
         r = self.rect()
@@ -329,8 +352,14 @@ class StyledNode(QGraphicsRectItem):
         # Garantir que o texto esteja centralizado antes de desenhar
         self._center_text_vertical()
         
-        # Renderizar o background e border do nó
-        super().paint(painter, option, widget)
+        if self._is_title:
+            painter.setRenderHint(QPainter.Antialiasing)
+            painter.setBrush(self.brush())
+            painter.setPen(QPen(Qt.NoPen))
+            painter.drawEllipse(self.rect())
+        else:
+            # Renderizar o background e border do nó
+            super().paint(painter, option, widget)
 
         # Se há uma imagem incorporada, renderizá-la
         if self._embedded_image:

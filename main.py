@@ -1506,42 +1506,39 @@ class AmareloMainWindow(QMainWindow):
         
         node = sel[0]
         
-        # Verificar se já é título
-        if hasattr(node, '_is_title') and node._is_title:
-            # Remover título (voltar ao normal)
+        if node._is_title:
             node._is_title = False
             
-            # Restaurar forma original (retângulo)
             node.setRect(node._original_rect)
             
-            # Restaurar tamanho de fonte original
             if hasattr(node, '_original_font_size'):
                 font = node.text.font()
                 font.setPointSize(node._original_font_size)
+                font.setBold(False)
                 node.text.setFont(font)
             
-            # Restaurar brush
+            node.text.setTextWidth(node._original_rect.width() - 20)
+            node._center_text_vertical()
             node.update_brush()
         else:
-            # Marcar como título
             node._is_title = True
             node._original_rect = node.rect()
             node._original_font_size = node.text.font().pointSize()
             
-            # Mudar para círculo
             from PySide6.QtCore import QRectF
             size = max(node.rect().width(), node.rect().height())
             node.setRect(QRectF(0, 0, size, size))
             
-            # Triplicar tamanho da fonte
+            inscribed = size / 1.414
+            node.text.setTextWidth(max(20, inscribed - 20))
+            
             font = node.text.font()
             font.setPointSize(node._original_font_size * 3)
             font.setBold(True)
             node.text.setFont(font)
             
-            # Atualizar visual
+            node._center_text_vertical()
             node.update_brush()
-            from PySide6.QtWidgets import QGraphicsSceneWheelEvent
             node.update()
         
         self.scene.update()
@@ -1690,7 +1687,6 @@ class AmareloMainWindow(QMainWindow):
             cursor.setPosition(selection_start)
             cursor.setPosition(selection_end, QTextCursor.KeepAnchor)
             
-            fmt.setFont(font)
             cursor.mergeCharFormat(fmt)
             target_node.text.setTextCursor(cursor)
         else:
@@ -2617,10 +2613,8 @@ if __name__ == "__main__":
     # Estilo global e configuração
     app.setStyle("Fusion")
     
-    # App identity for proper panel integration (fixes duplicate icon issue)
-    app.setApplicationName("amarelo-mind")
+    app.setApplicationName("AmareloMind")
     app.setApplicationDisplayName("Amarelo Mind")
-    app.setDesktopFileName("amarelo-mind")
     
     # Registrar ícone para arquivos .amind (Windows only)
     try:
@@ -2630,13 +2624,6 @@ if __name__ == "__main__":
         print(f"Aviso: Não foi possível registrar ícone .amind: {e}")
     
     window = AmareloMainWindow()
-    
-    # Set window role for proper taskbar grouping on Linux
-    try:
-        window.setWindowRole("main")
-    except Exception:
-        pass
-    
     window.showMaximized()
     
     sys.exit(app.exec())
