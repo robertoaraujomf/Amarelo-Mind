@@ -1706,37 +1706,33 @@ class AmareloMainWindow(QMainWindow):
             self.undo_stack.endMacro()
 
     def change_colors(self):
-        # Determinar o alvo: nó ou conexão selecionada
         target_node = None
         target_connection = None
-        
-        # 1. Verificar se há conexão selecionada
+
         for item in self.scene.selectedItems():
             if isinstance(item, SmartConnection):
                 target_connection = item
                 break
-        
-        # 2. Se não tem conexão, verificar nó
+
         if not target_connection:
             focus_item = self.scene.focusItem()
             if isinstance(focus_item, QGraphicsTextItem):
                 parent = focus_item.parentItem()
                 if isinstance(parent, StyledNode):
                     target_node = parent
-            
+
             if not target_node:
                 for item in self.scene.selectedItems():
                     if isinstance(item, StyledNode):
                         target_node = item
                         break
-        
-        # Se não tem nada selecionado, sair
+
         if not target_node and not target_connection:
             return
-        
-        # Se tem conexão selecionada, mudar cor da conexão
+
+        from core.dialogs import ColorPickerDialog
+
         if target_connection:
-            from core.dialogs import ColorPickerDialog
             current_color = target_connection.pen().color()
             color, ok = ColorPickerDialog.get_color_value(current_color, self)
             if ok:
@@ -1745,17 +1741,15 @@ class AmareloMainWindow(QMainWindow):
                 target_connection.setPen(pen)
                 target_connection.update()
             return
-        
-        # Continuar com lógica de nó (fundo ou texto)
+
         cursor = target_node.text.textCursor()
         has_text_selection = cursor.hasSelection()
-        
+
         if has_text_selection:
-            from core.dialogs import ColorPickerDialog
             color, ok = ColorPickerDialog.get_color_value(QColor("#000000"), self)
             if not ok:
                 return
-            
+
             self.undo_stack.beginMacro("Mudar cor do texto")
             old_html = target_node.text.document().toHtml()
             fmt = QTextCharFormat()
@@ -1767,80 +1761,16 @@ class AmareloMainWindow(QMainWindow):
             self.undo_stack.push(cmd)
             self.undo_stack.endMacro()
         else:
-            # Diálogo com opção transparente
-            from PySide6.QtWidgets import QDialog, QVBoxLayout, QHBoxLayout, QPushButton, QLabel
-            from core.dialogs import ColorPickerDialog
-            
-            dialog = QDialog(self)
-            dialog.setWindowTitle("Cores")
-            layout = QVBoxLayout(dialog)
-            
-            label = QLabel("Escolha a cor de fundo do objeto:")
-            layout.addWidget(label)
-            
-            btn_layout = QHBoxLayout()
-            
-            # Botões de cor
-            def select_color(color_val):
+            initial_color = QColor(target_node.custom_color) if target_node.custom_color else QColor("#FFFFFF")
+            color, ok = ColorPickerDialog.get_color_value(initial_color, self)
+            if ok:
                 self.undo_stack.beginMacro("Mudar cor de fundo")
                 old_state = {'node_type': target_node.node_type, 'custom_color': target_node.custom_color}
-                new_state = {'node_type': target_node.node_type, 'custom_color': color_val}
+                new_state = {'node_type': target_node.node_type, 'custom_color': color.name()}
                 cmd = ChangeNodeStyleCommand(target_node, old_state, new_state)
                 self.undo_stack.push(cmd)
                 self.undo_stack.endMacro()
-                dialog.accept()
-            
-            def select_transparent():
-                self.undo_stack.beginMacro("Definir fundo transparente")
-                old_state = {'node_type': target_node.node_type, 'custom_color': target_node.custom_color}
-                new_state = {'node_type': target_node.node_type, 'custom_color': None}
-                cmd = ChangeNodeStyleCommand(target_node, old_state, new_state)
-                self.undo_stack.push(cmd)
-                self.undo_stack.endMacro()
-                dialog.accept()
-            
-            # Botões de cores predefined
-            cores_predef = ["#ffffff", "#ff6b6b", "#ffd700", "#2d6a4f", "#00b4d8", "#9d4edd"]
-            for c in cores_predef:
-                btn = QPushButton()
-                btn.setFixedSize(40, 40)
-                btn.setStyleSheet(f"background-color: {c}; border: 2px solid #444; border-radius: 4px;")
-                btn.clicked.connect(lambda checked, c=c: select_color(c))
-                btn_layout.addWidget(btn)
-            
-            # Botão transparente
-            transp_btn = QPushButton("Transparente")
-            transp_btn.setStyleSheet("background-color: #333; color: #fff; border: 2px dashed #666; border-radius: 4px; padding: 5px;")
-            transp_btn.clicked.connect(select_transparent)
-            btn_layout.addWidget(transp_btn)
-            
-            layout.addLayout(btn_layout)
-            
-            # Botão更多 cores
-            more_btn = QPushButton("Mais cores...")
-            more_btn.clicked.connect(lambda: (dialog.accept(), self._open_color_picker(target_node)))
-            layout.addWidget(more_btn)
-            
-            # Cancelar
-            close_btn = QPushButton("Fechar")
-            close_btn.clicked.connect(dialog.reject)
-            layout.addWidget(close_btn)
-            
-            dialog.exec()
     
-    def _open_color_picker(self, target_node):
-        """Abre o diálogo de cores original."""
-        from core.dialogs import ColorPickerDialog
-        initial_color = QColor(target_node.custom_color) if target_node.custom_color else QColor("#FFFFFF")
-        color, ok = ColorPickerDialog.get_color_value(initial_color, self)
-        if ok:
-            self.undo_stack.beginMacro("Mudar cor de fundo")
-            old_state = {'node_type': target_node.node_type, 'custom_color': target_node.custom_color}
-            new_state = {'node_type': target_node.node_type, 'custom_color': color.name()}
-            cmd = ChangeNodeStyleCommand(target_node, old_state, new_state)
-            self.undo_stack.push(cmd)
-            self.undo_stack.endMacro()
-
     def toggle_shadow(self):
         items = [item for item in self.scene.selectedItems() if isinstance(item, StyledNode)]
         if items:
