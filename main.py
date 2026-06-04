@@ -1508,6 +1508,7 @@ class AmareloMainWindow(QMainWindow):
         
         if node._is_title:
             node._is_title = False
+            node.prepareGeometryChange()
             
             node.setRect(node._original_rect)
             
@@ -1522,6 +1523,7 @@ class AmareloMainWindow(QMainWindow):
             node.update_brush()
         else:
             node._is_title = True
+            node.prepareGeometryChange()
             node._original_rect = node.rect()
             node._original_font_size = node.text.font().pointSize()
             

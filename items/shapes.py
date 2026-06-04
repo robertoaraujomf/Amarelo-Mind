@@ -176,6 +176,9 @@ class StyledNode(QGraphicsRectItem):
         """Centraliza o texto verticalmente no objeto"""
         r = self.rect()
         
+        # Salvar cursor para preservar posição/seleção durante adjustSize
+        saved_cursor = self.text.textCursor()
+        
         # Salvar a largura atual do texto
         current_text_width = self.text.textWidth()
         
@@ -185,6 +188,9 @@ class StyledNode(QGraphicsRectItem):
         # Se tinhamos uma largura definida, restaurá-la
         if current_text_width > 0:
             self.text.setTextWidth(current_text_width)
+        
+        # Restaurar cursor
+        self.text.setTextCursor(saved_cursor)
         
         # Obter dimensões reais do texto
         text_rect = self.text.boundingRect()
@@ -357,6 +363,10 @@ class StyledNode(QGraphicsRectItem):
             painter.setBrush(self.brush())
             painter.setPen(QPen(Qt.NoPen))
             painter.drawEllipse(self.rect())
+            if self.isSelected():
+                painter.setPen(QPen(QColor("#00ff88"), 2, Qt.DashLine))
+                painter.setBrush(Qt.NoBrush)
+                painter.drawEllipse(self.rect().adjusted(2, 2, -2, -2))
         else:
             # Renderizar o background e border do nó
             super().paint(painter, option, widget)
