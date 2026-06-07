@@ -1523,21 +1523,42 @@ class AmareloMainWindow(QMainWindow):
             node.update_brush()
         else:
             node._is_title = True
-            node.prepareGeometryChange()
             node._original_rect = node.rect()
             node._original_font_size = node.text.font().pointSize()
             
             from PySide6.QtCore import QRectF
-            size = max(node.rect().width(), node.rect().height())
-            node.setRect(QRectF(0, 0, size, size))
             
-            inscribed = size / 1.414
-            node.text.setTextWidth(max(20, inscribed - 20))
-            
+            # Aplicar fonte de título primeiro para medir o texto corretamente
             font = node.text.font()
             font.setPointSize(node._original_font_size * 3)
             font.setBold(True)
             node.text.setFont(font)
+            
+            # Encontrar o menor círculo que cabe o texto
+            orig = node._original_rect
+            size = max(orig.width(), orig.height(), 80)
+            
+            for _ in range(20):
+                inscribed = size / 1.414
+                tw = max(20, inscribed - 20)
+                node.text.setTextWidth(tw)
+                text_size = node.text.document().size()
+                
+                if text_size.width() <= inscribed - 10 and text_size.height() <= inscribed - 10:
+                    break
+                
+                size = max(
+                    (text_size.width() + 20) * 1.42,
+                    (text_size.height() + 20) * 1.42,
+                    size * 1.15
+                )
+            
+            node.prepareGeometryChange()
+            node.setRect(QRectF(0, 0, size, size))
+            
+            # Garantir largura do texto conforme tamanho final
+            inscribed = size / 1.414
+            node.text.setTextWidth(max(20, inscribed - 20))
             
             node._center_text_vertical()
             node.update_brush()
