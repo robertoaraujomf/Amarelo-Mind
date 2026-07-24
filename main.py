@@ -702,13 +702,14 @@ class AmareloMainWindow(QMainWindow):
             "Copiar": "Ctrl+C",
             "Colar": "Ctrl+V",
             "Adicionar": "+",
+            "Título": "",
             "Mídia": "",
             "Conectar": "C",
+            "Ocultar": "Ctrl+O",
             "Excluir": "Delete",
             "Fonte": "",
             "Cores": "",
             "Localizar": "Ctrl+F",
-            "Ocultar": "Ctrl+O",
         }
         
         self.load_shortcuts_from_file()
@@ -836,7 +837,7 @@ class AmareloMainWindow(QMainWindow):
         tb.addSeparator()
 
         self.act_add = make_action("Adicionar.png", "Adicionar objeto", self.add_object, "Adicionar")
-        self.act_title = make_action("Titulo.png", "Marcar como título", self.toggle_title, "Titulo")
+        self.act_title = make_action("Titulo.png", "Marcar como título", self.toggle_title, "Título")
         self.act_media = make_action("Midia.png", "Mídia", self.insert_media)
         self.act_connect = make_action("Conectar.png", "Conectar", self.connect_nodes, "Conectar")
         
@@ -2087,9 +2088,12 @@ class AmareloMainWindow(QMainWindow):
         from PySide6.QtCore import Qt, QEvent, QObject
         
         all_buttons = [
-            "Novo", "Abrir", "Salvar", "Exportar", "Desfazer", "Refazer",
-            "Copiar", "Colar", "Adicionar", "Mídia", "Conectar", "Ocultar",
-            "Excluir", "Fonte", "Cores", "Localizar"
+            "Novo", "Abrir", "Salvar", "Exportar",
+            "Desfazer", "Refazer",
+            "Copiar", "Colar",
+            "Adicionar", "Título", "Mídia", "Conectar", "Ocultar", "Excluir",
+            "Fonte", "Cores",
+            "Localizar"
         ]
         
         dialog = QDialog(self)
@@ -2246,6 +2250,9 @@ class AmareloMainWindow(QMainWindow):
             
             self.act_add.setShortcut(self.custom_shortcuts.get("Adicionar", ""))
             
+            if hasattr(self, 'act_title'):
+                self.act_title.setShortcut(self.custom_shortcuts.get("Título", ""))
+            
             if hasattr(self, 'act_media'):
                 self.act_media.setShortcut(self.custom_shortcuts.get("Mídia", ""))
             
@@ -2361,7 +2368,7 @@ class AmareloMainWindow(QMainWindow):
         about_text = """
 <h2>Amarelo Mind</h2>
 
-<p><b>Versão 1.5</b></p>
+<p><b>Versão 1.5.2</b></p>
 
 <p>Um aplicativo de mapa mental moderno e intuitivo.</p>
 

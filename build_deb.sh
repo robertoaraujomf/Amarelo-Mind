@@ -2,7 +2,7 @@
 set -e
 
 APP_NAME="amarelo-mind"
-VERSION="1.5.1"
+VERSION="1.5.2"
 BUILD_DIR="build_deb"
 PKG_DIR="${BUILD_DIR}/${APP_NAME}_${VERSION}"
 
