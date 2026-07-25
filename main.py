@@ -83,17 +83,17 @@ THEMES = {
         "primary_light": "#1a8fb8",
         "primary_dark": "#0d6080",
         "primary_darker": "#084a60",
-        "bg_main": "#0e1520",
-        "bg_toolbar": "#141e28",
-        "border": "#203545",
-        "border_light": "#304555",
-        "text": "#c0d0d8",
-        "text_light": "#f0f8fc",
-        "accent": "#90D0EE",
-        "scrollbar": "#203545",
-        "scrollbar_hover": "#405565",
-        "disabled": "#556666",
-        "canvas_bg": "#0e1520",
+        "bg_main": "#0a1a22",
+        "bg_toolbar": "#0f2530",
+        "border": "#1a4050",
+        "border_light": "#2a5565",
+        "text": "#b0d8e8",
+        "text_light": "#e0f4fc",
+        "accent": "#70d0f0",
+        "scrollbar": "#1a4050",
+        "scrollbar_hover": "#2a5565",
+        "disabled": "#4a6a7a",
+        "canvas_bg": "#0a1a22",
     },
     "#dabbed": {
         "primary": "#b07090",
@@ -907,12 +907,14 @@ class AmareloMainWindow(QMainWindow):
         self.save_theme_to_file()
 
     def show_themes_dialog(self):
-        from PySide6.QtWidgets import QDialog, QVBoxLayout, QHBoxLayout, QPushButton, QLabel, QButtonGroup, QRadioButton
-        from PySide6.QtCore import Qt
+        from PySide6.QtWidgets import (QDialog, QVBoxLayout, QHBoxLayout, QPushButton,
+                                       QLabel, QButtonGroup, QRadioButton, QWidget)
+        from PySide6.QtCore import Qt, QSize
+        from PySide6.QtGui import QPixmap, QPainter, QColor
 
         dialog = QDialog(self)
         dialog.setWindowTitle("Temas")
-        dialog.setMinimumWidth(350)
+        dialog.setMinimumWidth(380)
         layout = QVBoxLayout(dialog)
 
         label = QLabel("Escolha o tema do aplicativo:")
@@ -920,24 +922,68 @@ class AmareloMainWindow(QMainWindow):
 
         btn_group = QButtonGroup(dialog)
         theme_names = list(THEMES.keys())
-        for name in theme_names:
-            rb = QRadioButton(name)
+
+        THEME_LABELS = {
+            "Padrão": "Verde",
+            "#661f41": "Vinho",
+            "#11799e": "Azul-petróleo",
+            "#dabbed": "Rosa",
+        }
+
+        for i, name in enumerate(theme_names):
+            t = THEMES[name]
+            row = QHBoxLayout()
+
+            swatch = QLabel()
+            swatch.setFixedSize(48, 48)
+            pix = QPixmap(48, 48)
+            pix.fill(Qt.transparent)
+            p = QPainter(pix)
+            p.setRenderHint(QPainter.Antialiasing)
+            p.setBrush(QColor(t["primary"]))
+            p.setPen(Qt.NoPen)
+            p.drawRoundedRect(0, 0, 48, 48, 8, 8)
+            p.setBrush(QColor(t["accent"]))
+            p.drawRoundedRect(4, 32, 40, 12, 4, 4)
+            p.end()
+            swatch.setPixmap(pix)
+
+            display_name = THEME_LABELS.get(name, name)
+            rb = QRadioButton(display_name)
             if name == self.current_theme_name:
                 rb.setChecked(True)
-            btn_group.addButton(rb, theme_names.index(name))
-            layout.addWidget(rb)
+            rb.setStyleSheet("font-size: 14px;")
+
+            row.addWidget(swatch)
+            row.addWidget(rb)
+            row.addStretch()
+            layout.addLayout(row)
+            btn_group.addButton(rb, i)
 
         theme = THEMES.get(self.current_theme_name, THEMES["Padrão"])
-        preview = QPushButton("Pré-visualização")
+        preview = QPushButton()
         preview.setEnabled(False)
-        preview.setFixedHeight(40)
-        preview.setStyleSheet(f"background-color: {theme['primary']}; color: #ffffff; border: 1px solid {theme['primary_light']};")
+        preview.setFixedHeight(44)
+        preview.setStyleSheet(
+            f"background: qlineargradient(x1:0,y1:0,x2:1,y2:0,"
+            f"stop:0 {theme['primary']}, stop:1 {theme['primary_dark']});"
+            f"color: {theme['accent']}; border: 1px solid {theme['primary_light']};"
+            f"border-radius: 10px; font-size: 13px; font-weight: 600;"
+        )
+        preview.setText(THEME_LABELS.get(self.current_theme_name, self.current_theme_name))
         layout.addWidget(preview)
 
         def on_theme_selected(idx):
             selected_name = theme_names[idx]
             t = THEMES[selected_name]
-            preview.setStyleSheet(f"background-color: {t['primary']}; color: #ffffff; border: 1px solid {t['primary_light']};")
+            lbl = THEME_LABELS.get(selected_name, selected_name)
+            preview.setText(lbl)
+            preview.setStyleSheet(
+                f"background: qlineargradient(x1:0,y1:0,x2:1,y2:0,"
+                f"stop:0 {t['primary']}, stop:1 {t['primary_dark']});"
+                f"color: {t['accent']}; border: 1px solid {t['primary_light']};"
+                f"border-radius: 10px; font-size: 13px; font-weight: 600;"
+            )
 
         btn_group.idClicked.connect(on_theme_selected)
 
