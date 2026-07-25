@@ -12,7 +12,8 @@ from PySide6.QtCore import Qt, QSize, QPointF, QRectF, QTimer
 from PySide6.QtGui import (
     QPainter, QColor, QAction, QWheelEvent,
     QUndoStack, QImage, QUndoCommand, QFont,
-    QTextCursor, QTextCharFormat, QPen, QPixmap
+    QTextCursor, QTextCharFormat, QPen, QPixmap,
+    QTextOption
 )
 
 # ======================================================
@@ -37,6 +38,108 @@ from items.media import MediaSliderImageItem
 from items.media import MediaAVItem
 from items.media import MediaAVSliderItem
 import urllib.request
+
+
+# ======================================================
+# TEMAS
+# ======================================================
+THEMES = {
+    "Padrão": {
+        "primary": "#2d6a4f",
+        "primary_light": "#3d7a5f",
+        "primary_dark": "#1d5a3f",
+        "primary_darker": "#0d4a2f",
+        "bg_main": "#0f1621",
+        "bg_toolbar": "#1a2332",
+        "border": "#2d3a4f",
+        "border_light": "#3d4a5f",
+        "text": "#c0c8d8",
+        "text_light": "#f0f6fc",
+        "accent": "#90EE90",
+        "scrollbar": "#2d3a4f",
+        "scrollbar_hover": "#4d5a6f",
+        "disabled": "#666666",
+        "canvas_bg": "#0f1621",
+    },
+    "#661f41": {
+        "primary": "#661f41",
+        "primary_light": "#7d2a52",
+        "primary_dark": "#4f1732",
+        "primary_darker": "#3a0f25",
+        "bg_main": "#1a0e14",
+        "bg_toolbar": "#23141c",
+        "border": "#3a2030",
+        "border_light": "#4a3040",
+        "text": "#d8c0c8",
+        "text_light": "#fcf0f4",
+        "accent": "#FFB6C1",
+        "scrollbar": "#3a2030",
+        "scrollbar_hover": "#5a4050",
+        "disabled": "#665555",
+        "canvas_bg": "#1a0e14",
+    },
+    "#11799e": {
+        "primary": "#11799e",
+        "primary_light": "#1a8fb8",
+        "primary_dark": "#0d6080",
+        "primary_darker": "#084a60",
+        "bg_main": "#0e1520",
+        "bg_toolbar": "#141e28",
+        "border": "#203545",
+        "border_light": "#304555",
+        "text": "#c0d0d8",
+        "text_light": "#f0f8fc",
+        "accent": "#90D0EE",
+        "scrollbar": "#203545",
+        "scrollbar_hover": "#405565",
+        "disabled": "#556666",
+        "canvas_bg": "#0e1520",
+    },
+    "#dabbed": {
+        "primary": "#b07090",
+        "primary_light": "#c080a0",
+        "primary_dark": "#9a6080",
+        "primary_darker": "#805068",
+        "bg_main": "#1a1018",
+        "bg_toolbar": "#231820",
+        "border": "#382535",
+        "border_light": "#483545",
+        "text": "#d8c0d0",
+        "text_light": "#fcf0f8",
+        "accent": "#dabbed",
+        "scrollbar": "#382535",
+        "scrollbar_hover": "#584555",
+        "disabled": "#665566",
+        "canvas_bg": "#1a1018",
+    },
+}
+
+def generate_qss(theme):
+    """Gera o QSS a partir do template e do dicionário de cores do tema."""
+    qss_path = os.path.join(BASE_DIR, "assets", "styles.qss")
+    if not os.path.exists(qss_path):
+        return ""
+    with open(qss_path, "r", encoding="utf-8") as f:
+        qss = f.read()
+    replacements = {
+        "{{PRIMARY}}": theme["primary"],
+        "{{PRIMARY_LIGHT}}": theme["primary_light"],
+        "{{PRIMARY_DARK}}": theme["primary_dark"],
+        "{{PRIMARY_DARKER}}": theme["primary_darker"],
+        "{{BG_MAIN}}": theme["bg_main"],
+        "{{BG_TOOLBAR}}": theme["bg_toolbar"],
+        "{{BORDER}}": theme["border"],
+        "{{BORDER_LIGHT}}": theme["border_light"],
+        "{{TEXT}}": theme["text"],
+        "{{TEXT_LIGHT}}": theme["text_light"],
+        "{{ACCENT}}": theme["accent"],
+        "{{SCROLLBAR}}": theme["scrollbar"],
+        "{{SCROLLBAR_HOVER}}": theme["scrollbar_hover"],
+        "{{DISABLED}}": theme["disabled"],
+    }
+    for placeholder, color in replacements.items():
+        qss = qss.replace(placeholder, color)
+    return qss
 
 
 # ======================================================
@@ -682,6 +785,9 @@ class AmareloMainWindow(QMainWindow):
 
         # Alinhar ativo por padrão
         self.alinhar_ativo = True
+        
+        # Tema atual
+        self.current_theme_name = "Padrão"
 
         self.scene = QGraphicsScene(-100000, -100000, 200000, 200000)
         self.view = InfiniteCanvas(self.scene, self)
@@ -709,6 +815,12 @@ class AmareloMainWindow(QMainWindow):
             "Excluir": "Delete",
             "Fonte": "",
             "Cores": "",
+            "Negrito": "Ctrl+B",
+            "Itálico": "Ctrl+I",
+            "Sublinhado": "Ctrl+U",
+            "Linha Acima": "",
+            "Alinhar": "D",
+            "Temas": "",
             "Localizar": "Ctrl+F",
         }
         
@@ -755,10 +867,101 @@ class AmareloMainWindow(QMainWindow):
     # STYLES
     # --------------------------------------------------
     def load_styles(self):
-        qss = os.path.join(BASE_DIR, "assets", "styles.qss")
-        if os.path.exists(qss):
-            with open(qss, "r", encoding="utf-8") as f:
-                self.setStyleSheet(f.read())
+        self.load_theme_from_file()
+        theme = THEMES.get(self.current_theme_name, THEMES["Padrão"])
+        qss = generate_qss(theme)
+        if qss:
+            self.setStyleSheet(qss)
+        canvas_bg = theme.get("canvas_bg", "#0f1621")
+        self.view.setBackgroundBrush(QColor(canvas_bg))
+
+    def _get_theme_file(self):
+        config_dir = os.path.join(os.path.expanduser("~"), ".config", "amarelo-mind")
+        os.makedirs(config_dir, exist_ok=True)
+        return os.path.join(config_dir, "theme.json")
+
+    def load_theme_from_file(self):
+        theme_file = self._get_theme_file()
+        if os.path.exists(theme_file):
+            try:
+                with open(theme_file, "r", encoding="utf-8") as f:
+                    saved = json.load(f)
+                    self.current_theme_name = saved.get("theme", "Padrão")
+            except Exception:
+                self.current_theme_name = "Padrão"
+
+    def save_theme_to_file(self):
+        theme_file = self._get_theme_file()
+        try:
+            with open(theme_file, "w", encoding="utf-8") as f:
+                json.dump({"theme": self.current_theme_name}, f, indent=2, ensure_ascii=False)
+        except Exception as e:
+            print(f"Aviso: Não foi possível salvar tema: {e}")
+
+    def apply_theme(self, theme_name):
+        if theme_name not in THEMES:
+            return
+        self.current_theme_name = theme_name
+        theme = THEMES[theme_name]
+        qss = generate_qss(theme)
+        if qss:
+            self.setStyleSheet(qss)
+        canvas_bg = theme.get("canvas_bg", "#0f1621")
+        self.view.setBackgroundBrush(QColor(canvas_bg))
+        self.save_theme_to_file()
+
+    def show_themes_dialog(self):
+        from PySide6.QtWidgets import QDialog, QVBoxLayout, QHBoxLayout, QPushButton, QLabel, QButtonGroup, QRadioButton
+        from PySide6.QtCore import Qt
+
+        dialog = QDialog(self)
+        dialog.setWindowTitle("Temas")
+        dialog.setMinimumWidth(350)
+        layout = QVBoxLayout(dialog)
+
+        label = QLabel("Escolha o tema do aplicativo:")
+        layout.addWidget(label)
+
+        btn_group = QButtonGroup(dialog)
+        theme_names = list(THEMES.keys())
+        for name in theme_names:
+            rb = QRadioButton(name)
+            if name == self.current_theme_name:
+                rb.setChecked(True)
+            btn_group.addButton(rb, theme_names.index(name))
+            layout.addWidget(rb)
+
+        theme = THEMES.get(self.current_theme_name, THEMES["Padrão"])
+        preview = QPushButton("Pré-visualização")
+        preview.setEnabled(False)
+        preview.setFixedHeight(40)
+        preview.setStyleSheet(f"background-color: {theme['primary']}; color: #ffffff; border: 1px solid {theme['primary_light']};")
+        layout.addWidget(preview)
+
+        def on_theme_selected(idx):
+            selected_name = theme_names[idx]
+            t = THEMES[selected_name]
+            preview.setStyleSheet(f"background-color: {t['primary']}; color: #ffffff; border: 1px solid {t['primary_light']};")
+
+        btn_group.idClicked.connect(on_theme_selected)
+
+        btn_layout = QHBoxLayout()
+        apply_btn = QPushButton("Aplicar")
+        cancel_btn = QPushButton("Fechar")
+
+        def apply_selected():
+            idx = btn_group.checkedId()
+            if idx >= 0:
+                self.apply_theme(theme_names[idx])
+            dialog.accept()
+
+        apply_btn.clicked.connect(apply_selected)
+        cancel_btn.clicked.connect(dialog.reject)
+        btn_layout.addWidget(apply_btn)
+        btn_layout.addWidget(cancel_btn)
+        layout.addLayout(btn_layout)
+
+        dialog.exec()
 
     def _get_shortcuts_file(self):
         config_dir = os.path.join(os.path.expanduser("~"), ".config", "amarelo-mind")
@@ -850,6 +1053,18 @@ class AmareloMainWindow(QMainWindow):
 
         self.act_font = make_action("Fonte.png", "Fonte", self.change_font)
         self.act_colors = make_action("Cores.png", "Cores", self.change_colors)
+
+        tb.addSeparator()
+
+        self.act_bold = make_action("Negrito.png", "Negrito", self.toggle_bold, "Negrito")
+        self.act_italic = make_action("Italico.png", "Itálico", self.toggle_italic, "Itálico")
+        self.act_underline = make_action("Sublinhado.png", "Sublinhado", self.toggle_underline, "Sublinhado")
+        self.act_overline = make_action("LinhaAcima.png", "Linha Acima", self.toggle_overline, "Linha Acima")
+
+        tb.addSeparator()
+
+        self.act_align = make_action("Alinhar.png", "Alinhar objetos", self.align_objects, "Alinhar")
+        self.act_themes = make_action("Temas.png", "Temas", self.show_themes_dialog, "Temas")
 
         tb.addSeparator()
 
@@ -969,6 +1184,17 @@ class AmareloMainWindow(QMainWindow):
         self.act_font.setEnabled(can_format)
         self.act_colors.setEnabled(can_format)
         self.act_export.setEnabled(has_items)
+
+        # Botões de formatação rápida: habilitados se há texto selecionado ou nó selecionado
+        can_quick_format = can_format
+        self.act_bold.setEnabled(can_quick_format)
+        self.act_italic.setEnabled(can_quick_format)
+        self.act_underline.setEnabled(can_quick_format)
+        self.act_overline.setEnabled(can_quick_format)
+
+        # Botão Alinhar: habilitado se há 2+ objetos (StyledNode ou MediaItem)
+        alignable = [i for i in sel if isinstance(i, (StyledNode, MediaItem))]
+        self.act_align.setEnabled(len(alignable) >= 2)
 
         # Botão Copiar: habilitado se há texto com seleção
         # - Texto com seleção em foco, OU
@@ -1697,8 +1923,17 @@ class AmareloMainWindow(QMainWindow):
         cursor = target_node.text.textCursor()
         has_text_selection = cursor.hasSelection()
         
+        # Passar a fonte e o formato do cursor para o diálogo
+        current_font = target_node.text.font()
+        if has_text_selection:
+            cursor_fmt = cursor.charFormat()
+            current_font.setBold(cursor_fmt.fontWeight() >= QFont.Weight.Bold)
+            current_font.setItalic(cursor_fmt.fontItalic())
+            current_font.setUnderline(cursor_fmt.fontUnderline())
+            current_font._cursor = cursor
+        
         # Abrir diálogo customizado
-        font, fmt, ok = FontStyleDialog.get_font_and_format(target_node.text.font(), self)
+        font, fmt, ok = FontStyleDialog.get_font_and_format(current_font, self)
         
         if not ok:
             return
@@ -1798,6 +2033,143 @@ class AmareloMainWindow(QMainWindow):
         if items:
             cmd = ToggleShadowCommand(items)
             self.undo_stack.push(cmd)
+
+    # --------------------------------------------------
+    # FORMATAÇÃO RÁPIDA (SELECIONAR TEXTO)
+    # --------------------------------------------------
+    def _get_target_node(self):
+        """Retorna o nó alvo para formatação: foco de texto ou selecionado."""
+        focus_item = self.scene.focusItem()
+        if isinstance(focus_item, QGraphicsTextItem):
+            parent = focus_item.parentItem()
+            if isinstance(parent, StyledNode):
+                return parent
+        for item in self.scene.selectedItems():
+            if isinstance(item, StyledNode):
+                return item
+        return None
+
+    def _apply_format_to_selection(self, format_type):
+        """Aplica/alterna um formato ao texto selecionado do nó alvo."""
+        target = self._get_target_node()
+        if not target:
+            return
+        cursor = target.text.textCursor()
+        has_selection = cursor.hasSelection()
+        old_html = target.text.document().toHtml()
+        if has_selection:
+            sel_start = cursor.selectionStart()
+            sel_end = cursor.selectionEnd()
+        if format_type == 'bold':
+            current_weight = cursor.charFormat().fontWeight()
+            new_weight = QFont.Weight.Normal if current_weight >= QFont.Weight.Bold else QFont.Weight.Bold
+            fmt = QTextCharFormat()
+            fmt.setFontWeight(new_weight)
+        elif format_type == 'italic':
+            fmt = QTextCharFormat()
+            fmt.setFontItalic(not cursor.charFormat().fontItalic())
+        elif format_type == 'underline':
+            fmt = QTextCharFormat()
+            fmt.setFontUnderline(not cursor.charFormat().fontUnderline())
+        elif format_type == 'overline':
+            fmt = QTextCharFormat()
+            fmt.setFontOverline(not cursor.charFormat().fontOverline())
+        else:
+            return
+        if not has_selection:
+            cursor.select(QTextCursor.Document)
+        cursor.mergeCharFormat(fmt)
+        target.text.setTextCursor(cursor)
+        new_html = target.text.document().toHtml()
+        if old_html != new_html:
+            self.undo_stack.push(ChangeTextHtmlCommand(target, old_html, new_html, f"Alterar {format_type}"))
+
+    def toggle_bold(self):
+        self._apply_format_to_selection('bold')
+
+    def toggle_italic(self):
+        self._apply_format_to_selection('italic')
+
+    def toggle_underline(self):
+        self._apply_format_to_selection('underline')
+
+    def toggle_overline(self):
+        self._apply_format_to_selection('overline')
+
+    # --------------------------------------------------
+    # ALINHAR OBJETOS
+    # --------------------------------------------------
+    def align_objects(self):
+        """Alinha e distribui objetos selecionados conforme seus eixos."""
+        sel = [item for item in self.scene.selectedItems()
+               if isinstance(item, (StyledNode, MediaItem))]
+        if len(sel) < 2:
+            return
+
+        rects = []
+        for item in sel:
+            br = item.boundingRect()
+            pos = item.pos()
+            rects.append((pos.x(), pos.y(), br.width(), br.height()))
+
+        top_ys = [r[1] for r in rects]
+        left_xs = [r[0] for r in rects]
+        avg_top = sum(top_ys) / len(top_ys)
+        avg_left = sum(left_xs) / len(left_xs)
+        threshold = 30.0
+
+        same_horizontal = all(abs(y - avg_top) < threshold for y in top_ys)
+        same_vertical = all(abs(x - avg_left) < threshold for x in left_xs)
+
+        old_positions = {item: item.pos() for item in sel}
+
+        if same_horizontal and not same_vertical:
+            top_y = min(r[1] for r in rects)
+            sorted_items = sorted(zip(sel, rects), key=lambda t: t[1][0])
+            total_width = sum(r[2] for _, r in sorted_items)
+            gaps = len(sorted_items) - 1
+            spacing = total_width / gaps if gaps > 0 else 0
+            current_x = sorted_items[0][1][0]
+            for item, rect in sorted_items:
+                item.prepareGeometryChange()
+                item.setPos(QPointF(current_x, top_y))
+                current_x += rect[2] + spacing
+
+        elif same_vertical and not same_horizontal:
+            left_x = min(r[0] for r in rects)
+            sorted_items = sorted(zip(sel, rects), key=lambda t: t[1][1])
+            total_height = sum(r[3] for _, r in sorted_items)
+            gaps = len(sorted_items) - 1
+            spacing = total_height / gaps if gaps > 0 else 0
+            current_y = sorted_items[0][1][1]
+            for item, rect in sorted_items:
+                item.prepareGeometryChange()
+                item.setPos(QPointF(left_x, current_y))
+                current_y += rect[3] + spacing
+
+        elif same_horizontal and same_vertical:
+            top_y = min(r[1] for r in rects)
+            left_x = min(r[0] for r in rects)
+            for item in sel:
+                item.prepareGeometryChange()
+                item.setPos(QPointF(left_x, top_y))
+
+        else:
+            top_y = min(r[1] for r in rects)
+            sorted_items_h = sorted(zip(sel, rects), key=lambda t: t[1][0])
+            total_width = sum(r[2] for _, r in sorted_items_h)
+            gaps = len(sorted_items_h) - 1
+            spacing = total_width / gaps if gaps > 0 else 0
+            current_x = sorted_items_h[0][1][0]
+            for item, rect in sorted_items_h:
+                item.prepareGeometryChange()
+                item.setPos(QPointF(current_x, top_y))
+                current_x += rect[2] + spacing
+
+        self.scene.update()
+        for item in sel:
+            if item in old_positions and item.pos() != old_positions[item]:
+                self.undo_stack.push(MoveItemCommand(item, old_positions[item], item.pos(), "Alinhar objetos"))
 
     def _update_window_title(self):
         """Atualiza a barra de título: nome.amind - Amarelo Mind ou Amarelo Mind"""
@@ -2093,6 +2465,8 @@ class AmareloMainWindow(QMainWindow):
             "Copiar", "Colar",
             "Adicionar", "Título", "Mídia", "Conectar", "Ocultar", "Excluir",
             "Fonte", "Cores",
+            "Negrito", "Itálico", "Sublinhado", "Linha Acima",
+            "Alinhar", "Temas",
             "Localizar"
         ]
         
@@ -2265,6 +2639,19 @@ class AmareloMainWindow(QMainWindow):
             if hasattr(self, 'act_colors'):
                 self.act_colors.setShortcut(self.custom_shortcuts.get("Cores", ""))
             
+            if hasattr(self, 'act_bold'):
+                self.act_bold.setShortcut(self.custom_shortcuts.get("Negrito", ""))
+            if hasattr(self, 'act_italic'):
+                self.act_italic.setShortcut(self.custom_shortcuts.get("Itálico", ""))
+            if hasattr(self, 'act_underline'):
+                self.act_underline.setShortcut(self.custom_shortcuts.get("Sublinhado", ""))
+            if hasattr(self, 'act_overline'):
+                self.act_overline.setShortcut(self.custom_shortcuts.get("Linha Acima", ""))
+            if hasattr(self, 'act_align'):
+                self.act_align.setShortcut(self.custom_shortcuts.get("Alinhar", ""))
+            if hasattr(self, 'act_themes'):
+                self.act_themes.setShortcut(self.custom_shortcuts.get("Temas", ""))
+            
             self.act_search.setShortcut(self.custom_shortcuts.get("Localizar", ""))
             
             if hasattr(self, 'act_hide'):
@@ -2368,7 +2755,7 @@ class AmareloMainWindow(QMainWindow):
         about_text = """
 <h2>Amarelo Mind</h2>
 
-<p><b>Versão 1.5.2</b></p>
+<p><b>Versão 1.6.0</b></p>
 
 <p>Um aplicativo de mapa mental moderno e intuitivo.</p>
 

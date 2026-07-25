@@ -2,7 +2,7 @@
 set -e
 
 APP_NAME="amarelo-mind"
-VERSION="1.5.2"
+VERSION="1.6.0"
 BUILD_DIR="build_deb"
 PKG_DIR="${BUILD_DIR}/${APP_NAME}_${VERSION}"
 
@@ -29,7 +29,7 @@ cp assets/icons/App_icon.png ${PKG_DIR}/usr/share/icons/hicolor/48x48/apps/amare
 # Copy MIME type icon for .amind files to all standard sizes
 for size in 16 24 32 48 64 128 256; do
     mkdir -p ${PKG_DIR}/usr/share/icons/hicolor/${size}x${size}/mimetypes
-    cp assets/icons/files_amind_icon.png ${PKG_DIR}/usr/share/icons/hicolor/${size}x${size}/mimetypes/application-x-amind.png
+    cp assets/icons/Arquivos.png ${PKG_DIR}/usr/share/icons/hicolor/${size}x${size}/mimetypes/application-x-amind.png
 done
 
 mkdir -p ${PKG_DIR}/usr/bin
