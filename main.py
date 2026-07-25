@@ -815,10 +815,6 @@ class AmareloMainWindow(QMainWindow):
             "Excluir": "Delete",
             "Fonte": "",
             "Cores": "",
-            "Negrito": "Ctrl+B",
-            "Itálico": "Ctrl+I",
-            "Sublinhado": "Ctrl+U",
-            "Linha Acima": "",
             "Alinhar": "D",
             "Temas": "",
             "Localizar": "Ctrl+F",
@@ -1056,13 +1052,6 @@ class AmareloMainWindow(QMainWindow):
 
         tb.addSeparator()
 
-        self.act_bold = make_action("Negrito.png", "Negrito", self.toggle_bold, "Negrito")
-        self.act_italic = make_action("Italico.png", "Itálico", self.toggle_italic, "Itálico")
-        self.act_underline = make_action("Sublinhado.png", "Sublinhado", self.toggle_underline, "Sublinhado")
-        self.act_overline = make_action("LinhaAcima.png", "Linha Acima", self.toggle_overline, "Linha Acima")
-
-        tb.addSeparator()
-
         self.act_align = make_action("Alinhar.png", "Alinhar objetos", self.align_objects, "Alinhar")
         self.act_themes = make_action("Temas.png", "Temas", self.show_themes_dialog, "Temas")
 
@@ -1184,13 +1173,6 @@ class AmareloMainWindow(QMainWindow):
         self.act_font.setEnabled(can_format)
         self.act_colors.setEnabled(can_format)
         self.act_export.setEnabled(has_items)
-
-        # Botões de formatação rápida: habilitados se há texto selecionado ou nó selecionado
-        can_quick_format = can_format
-        self.act_bold.setEnabled(can_quick_format)
-        self.act_italic.setEnabled(can_quick_format)
-        self.act_underline.setEnabled(can_quick_format)
-        self.act_overline.setEnabled(can_quick_format)
 
         # Botão Alinhar: habilitado se há 2+ objetos (StyledNode ou MediaItem)
         alignable = [i for i in sel if isinstance(i, (StyledNode, MediaItem))]
@@ -1925,15 +1907,12 @@ class AmareloMainWindow(QMainWindow):
         
         # Passar a fonte e o formato do cursor para o diálogo
         current_font = target_node.text.font()
+        cursor_format = None
         if has_text_selection:
-            cursor_fmt = cursor.charFormat()
-            current_font.setBold(cursor_fmt.fontWeight() >= QFont.Weight.Bold)
-            current_font.setItalic(cursor_fmt.fontItalic())
-            current_font.setUnderline(cursor_fmt.fontUnderline())
-            current_font._cursor = cursor
+            cursor_format = cursor.charFormat()
         
         # Abrir diálogo customizado
-        font, fmt, ok = FontStyleDialog.get_font_and_format(current_font, self)
+        font, fmt, ok = FontStyleDialog.get_font_and_format(current_font, self, cursor_format)
         
         if not ok:
             return
@@ -2033,68 +2012,6 @@ class AmareloMainWindow(QMainWindow):
         if items:
             cmd = ToggleShadowCommand(items)
             self.undo_stack.push(cmd)
-
-    # --------------------------------------------------
-    # FORMATAÇÃO RÁPIDA (SELECIONAR TEXTO)
-    # --------------------------------------------------
-    def _get_target_node(self):
-        """Retorna o nó alvo para formatação: foco de texto ou selecionado."""
-        focus_item = self.scene.focusItem()
-        if isinstance(focus_item, QGraphicsTextItem):
-            parent = focus_item.parentItem()
-            if isinstance(parent, StyledNode):
-                return parent
-        for item in self.scene.selectedItems():
-            if isinstance(item, StyledNode):
-                return item
-        return None
-
-    def _apply_format_to_selection(self, format_type):
-        """Aplica/alterna um formato ao texto selecionado do nó alvo."""
-        target = self._get_target_node()
-        if not target:
-            return
-        cursor = target.text.textCursor()
-        has_selection = cursor.hasSelection()
-        old_html = target.text.document().toHtml()
-        if has_selection:
-            sel_start = cursor.selectionStart()
-            sel_end = cursor.selectionEnd()
-        if format_type == 'bold':
-            current_weight = cursor.charFormat().fontWeight()
-            new_weight = QFont.Weight.Normal if current_weight >= QFont.Weight.Bold else QFont.Weight.Bold
-            fmt = QTextCharFormat()
-            fmt.setFontWeight(new_weight)
-        elif format_type == 'italic':
-            fmt = QTextCharFormat()
-            fmt.setFontItalic(not cursor.charFormat().fontItalic())
-        elif format_type == 'underline':
-            fmt = QTextCharFormat()
-            fmt.setFontUnderline(not cursor.charFormat().fontUnderline())
-        elif format_type == 'overline':
-            fmt = QTextCharFormat()
-            fmt.setFontOverline(not cursor.charFormat().fontOverline())
-        else:
-            return
-        if not has_selection:
-            cursor.select(QTextCursor.Document)
-        cursor.mergeCharFormat(fmt)
-        target.text.setTextCursor(cursor)
-        new_html = target.text.document().toHtml()
-        if old_html != new_html:
-            self.undo_stack.push(ChangeTextHtmlCommand(target, old_html, new_html, f"Alterar {format_type}"))
-
-    def toggle_bold(self):
-        self._apply_format_to_selection('bold')
-
-    def toggle_italic(self):
-        self._apply_format_to_selection('italic')
-
-    def toggle_underline(self):
-        self._apply_format_to_selection('underline')
-
-    def toggle_overline(self):
-        self._apply_format_to_selection('overline')
 
     # --------------------------------------------------
     # ALINHAR OBJETOS
@@ -2465,7 +2382,6 @@ class AmareloMainWindow(QMainWindow):
             "Copiar", "Colar",
             "Adicionar", "Título", "Mídia", "Conectar", "Ocultar", "Excluir",
             "Fonte", "Cores",
-            "Negrito", "Itálico", "Sublinhado", "Linha Acima",
             "Alinhar", "Temas",
             "Localizar"
         ]
@@ -2639,14 +2555,6 @@ class AmareloMainWindow(QMainWindow):
             if hasattr(self, 'act_colors'):
                 self.act_colors.setShortcut(self.custom_shortcuts.get("Cores", ""))
             
-            if hasattr(self, 'act_bold'):
-                self.act_bold.setShortcut(self.custom_shortcuts.get("Negrito", ""))
-            if hasattr(self, 'act_italic'):
-                self.act_italic.setShortcut(self.custom_shortcuts.get("Itálico", ""))
-            if hasattr(self, 'act_underline'):
-                self.act_underline.setShortcut(self.custom_shortcuts.get("Sublinhado", ""))
-            if hasattr(self, 'act_overline'):
-                self.act_overline.setShortcut(self.custom_shortcuts.get("Linha Acima", ""))
             if hasattr(self, 'act_align'):
                 self.act_align.setShortcut(self.custom_shortcuts.get("Alinhar", ""))
             if hasattr(self, 'act_themes'):

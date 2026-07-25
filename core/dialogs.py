@@ -7,11 +7,12 @@ from PySide6.QtWidgets import QDialogButtonBox
 
 
 class FontStyleDialog(QDialog):
-    def __init__(self, current_font=None, parent=None):
+    def __init__(self, current_font=None, parent=None, current_format=None):
         super().__init__(parent)
         self.setWindowTitle("Estilo da Fonte")
         self.setMinimumWidth(500)
         self.current_font = current_font or QFont()
+        self.current_format = current_format
         self.selected_format = QTextCharFormat()
         self._setup_ui()
         self._load_current_format()
@@ -75,7 +76,7 @@ class FontStyleDialog(QDialog):
         layout.addWidget(size_group)
         
         buttons = QDialogButtonBox(QDialogButtonBox.StandardButton.Ok | 
-                                  QDialogButtonBox.StandardButton.Cancel)
+                                   QDialogButtonBox.StandardButton.Cancel)
         buttons.accepted.connect(self.accept)
         buttons.rejected.connect(self.reject)
         layout.addWidget(buttons)
@@ -94,15 +95,21 @@ class FontStyleDialog(QDialog):
         pass
     
     def _load_current_format(self):
-        self.bold_btn.setChecked(self.current_font.bold())
-        self.italic_btn.setChecked(self.current_font.italic())
-        self.underline_btn.setChecked(self.current_font.underline())
-        
-        cursor = getattr(self.current_font, '_cursor', None)
-        if cursor:
-            fmt = cursor.charFormat()
-            self.strikethrough_btn.setChecked(fmt.fontStrikeOut())
-            self.overline_btn.setChecked(fmt.fontOverline())
+        if self.current_format:
+            weight = self.current_format.fontWeight()
+            self.bold_btn.setChecked(weight >= QFont.Weight.Bold)
+            self.italic_btn.setChecked(self.current_format.fontItalic())
+            self.underline_btn.setChecked(self.current_format.fontUnderline())
+            self.strikethrough_btn.setChecked(self.current_format.fontStrikeOut())
+            self.overline_btn.setChecked(self.current_format.fontOverline())
+            if self.current_format.fontPointSize() > 0:
+                self.size_spin.setValue(int(self.current_format.fontPointSize()))
+        else:
+            self.bold_btn.setChecked(self.current_font.bold())
+            self.italic_btn.setChecked(self.current_font.italic())
+            self.underline_btn.setChecked(self.current_font.underline())
+            self.strikethrough_btn.setChecked(False)
+            self.overline_btn.setChecked(False)
     
     def get_font(self):
         font = QFont(self.font_family_combo.currentText())
@@ -124,8 +131,8 @@ class FontStyleDialog(QDialog):
         return fmt
     
     @staticmethod
-    def get_font_and_format(current_font=None, parent=None):
-        dialog = FontStyleDialog(current_font, parent)
+    def get_font_and_format(current_font=None, parent=None, current_format=None):
+        dialog = FontStyleDialog(current_font, parent, current_format)
         result = dialog.exec()
         if result:
             return dialog.get_font(), dialog.get_format(), True
