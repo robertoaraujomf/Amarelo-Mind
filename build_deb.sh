@@ -28,15 +28,20 @@ cp assets/icons/App_icon.png ${PKG_DIR}/usr/share/icons/hicolor/48x48/apps/amare
 
 # Copy MIME type icon for .amind files — generate each size from source
 python3 -c "
-import sys
+import sys, os
 from PySide6.QtWidgets import QApplication
-from PySide6.QtGui import QImage
+from PySide6.QtGui import QImage, QTransform
 from PySide6.QtCore import Qt
 app = QApplication(sys.argv)
 src = QImage('assets/icons/Arquivos.png')
 for s in [16, 22, 24, 32, 48, 64, 128, 256]:
-    scaled = src.scaled(s, s, Qt.KeepAspectRatio, Qt.SmoothTransformation)
-    scaled.save(f'${PKG_DIR}/usr/share/icons/hicolor/{s}x{s}/mimetypes/application-x-amind.png')
+    d = f'${PKG_DIR}/usr/share/icons/hicolor/{s}x{s}/mimetypes'
+    os.makedirs(d, exist_ok=True)
+    scaled = src.scaled(s, s, Qt.KeepAspectRatioByExpanding, Qt.SmoothTransformation)
+    x = (scaled.width() - s) // 2
+    y = (scaled.height() - s) // 2
+    cropped = scaled.copy(x, y, s, s)
+    cropped.save(f'{d}/application-x-amind.png')
 " 2>&1
 
 mkdir -p ${PKG_DIR}/usr/bin
