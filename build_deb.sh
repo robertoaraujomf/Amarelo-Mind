@@ -26,11 +26,18 @@ chmod +x ${PKG_DIR}/usr/share/amarelo-mind/AmareloMind
 
 cp assets/icons/App_icon.png ${PKG_DIR}/usr/share/icons/hicolor/48x48/apps/amarelo-mind.png
 
-# Copy MIME type icon for .amind files to all standard sizes
-for size in 16 24 32 48 64 128 256; do
-    mkdir -p ${PKG_DIR}/usr/share/icons/hicolor/${size}x${size}/mimetypes
-    cp assets/icons/Arquivos.png ${PKG_DIR}/usr/share/icons/hicolor/${size}x${size}/mimetypes/application-x-amind.png
-done
+# Copy MIME type icon for .amind files — generate each size from source
+python3 -c "
+import sys
+from PySide6.QtWidgets import QApplication
+from PySide6.QtGui import QImage
+from PySide6.QtCore import Qt
+app = QApplication(sys.argv)
+src = QImage('assets/icons/Arquivos.png')
+for s in [16, 22, 24, 32, 48, 64, 128, 256]:
+    scaled = src.scaled(s, s, Qt.KeepAspectRatio, Qt.SmoothTransformation)
+    scaled.save(f'${PKG_DIR}/usr/share/icons/hicolor/{s}x{s}/mimetypes/application-x-amind.png')
+" 2>&1
 
 mkdir -p ${PKG_DIR}/usr/bin
 ln -s /usr/share/amarelo-mind/AmareloMind ${PKG_DIR}/usr/bin/amarelo-mind
@@ -114,20 +121,19 @@ case "$1" in
         # Atualizar caches de ícones do sistema
         gtk-update-icon-cache -f /usr/share/icons/hicolor 2>/dev/null || true
 
-        # Copiar ícone MIME para o tema de ícones ativo do usuário
+        # Copiar ícone MIME para o tema de ícones ativo do usuário (tamanhos corretos)
         active_theme=$(gsettings get org.cinnamon.desktop.interface icon-theme 2>/dev/null || \
                        gsettings get org.gnome.desktop.interface icon-theme 2>/dev/null || echo "")
         active_theme=$(echo "$active_theme" | tr -d "'")
-        [ -n "$active_theme" ] && [ -d "/usr/share/icons/$active_theme" ] || active_theme=""
-        for theme in $active_theme hicolor; do
-            [ -d "/usr/share/icons/$theme" ] || continue
-            for size_dir in /usr/share/icons/$theme/*/mimetypes/; do
-                [ -d "$size_dir" ] || continue
-                cp /usr/share/icons/hicolor/48x48/mimetypes/application-x-amind.png \
-                   "$size_dir/application-x-amind.png" 2>/dev/null || true
+        if [ -n "$active_theme" ] && [ -d "/usr/share/icons/$active_theme" ]; then
+            for s in 16 22 24 32 48 64 128 256; do
+                mkdir -p "/usr/share/icons/$active_theme/${s}x${s}/mimetypes"
+                cp "/usr/share/icons/hicolor/${s}x${s}/mimetypes/application-x-amind.png" \
+                   "/usr/share/icons/$active_theme/${s}x${s}/mimetypes/" 2>/dev/null || true
             done
-            gtk-update-icon-cache -f "/usr/share/icons/$theme" 2>/dev/null || true
-        done
+            gtk-update-icon-cache -f "/usr/share/icons/$active_theme" 2>/dev/null || true
+        fi
+        gtk-update-icon-cache -f /usr/share/icons/hicolor 2>/dev/null || true
 
         # Notificar monitor GNOME sobre mudança de MIME
         if command -v update-desktop-database >/dev/null 2>&1; then
