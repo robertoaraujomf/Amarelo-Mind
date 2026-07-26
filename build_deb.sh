@@ -57,6 +57,7 @@ cat > ${PKG_DIR}/usr/share/mime/packages/amarelo-mind.xml << 'EOF'
   <mime-type type="application/x-amind">
     <comment>Amarelo Mind Map</comment>
     <glob pattern="*.amind"/>
+    <icon name="application-x-amind"/>
   </mime-type>
 </mime-info>
 EOF
@@ -74,28 +75,46 @@ Description: Interactive Mind Mapping Tool
  Features dark green design, intuitive icons, and advanced node management.
 EOF
 
-cat > ${PKG_DIR}/DEBIAN/postinst << 'EOF'
+cat > ${PKG_DIR}/DEBIAN/postinst << 'POSTINST'
 #!/bin/sh
 set -e
 case "$1" in
     configure)
         update-desktop-database || true
         update-mime-database /usr/share/mime || true
-        xdg-mime default amarelo-mind.desktop application/x-amind || true
 
         for user_home in /home/* /root; do
             [ -d "$user_home" ] || continue
+            [ -d "$user_home/.config" ] || continue
             mimeapps="$user_home/.config/mimeapps.list"
-            if [ -f "$mimeapps" ]; then
-                sed -i '/^application\/x-amind=/d' "$mimeapps" 2>/dev/null || true
+
+            # Garantir que o arquivo exista com as seções padrão
+            if [ ! -f "$mimeapps" ]; then
+                mkdir -p "$user_home/.config"
+                printf '[Added Associations]\n[Default Applications]\n' > "$mimeapps"
             fi
+
+            # Garantir que a seção [Default Applications] exista
+            if ! grep -q '^\[Default Applications\]' "$mimeapps" 2>/dev/null; then
+                printf '\n[Default Applications]\n' >> "$mimeapps"
+            fi
+
+            # Remover entrada antiga
+            sed -i '/^application\/x-amind=/d' "$mimeapps" 2>/dev/null || true
+
+            # Adicionar a associação correta
+            sed -i '/^\[Default Applications\]/a application/x-amind=amarelo-mind.desktop' "$mimeapps" 2>/dev/null || true
+
+            # Limpar caches locais
             rm -f "$user_home/.local/share/applications/amarelo-mind.desktop" 2>/dev/null || true
             rm -f "$user_home/.local/share/applications/AmareloMind.desktop" 2>/dev/null || true
             rm -f "$user_home/.local/share/applications/mimeinfo.cache" 2>/dev/null || true
         done
 
+        # Atualizar caches de ícones do sistema
         gtk-update-icon-cache -f /usr/share/icons/hicolor 2>/dev/null || true
 
+        # Copiar ícone MIME para o tema de ícones ativo do usuário
         active_theme=$(gsettings get org.cinnamon.desktop.interface icon-theme 2>/dev/null || \
                        gsettings get org.gnome.desktop.interface icon-theme 2>/dev/null || echo "")
         active_theme=$(echo "$active_theme" | tr -d "'")
@@ -109,10 +128,15 @@ case "$1" in
             done
             gtk-update-icon-cache -f "/usr/share/icons/$theme" 2>/dev/null || true
         done
+
+        # Notificar monitor GNOME sobre mudança de MIME
+        if command -v update-desktop-database >/dev/null 2>&1; then
+            update-desktop-database /usr/share/applications 2>/dev/null || true
+        fi
         ;;
 esac
 exit 0
-EOF
+POSTINST
 chmod +x ${PKG_DIR}/DEBIAN/postinst
 
 cat > ${PKG_DIR}/DEBIAN/postrm << 'EOF'
