@@ -32,13 +32,9 @@ app = QApplication.instance() or QApplication(sys.argv)
 app.setApplicationName("AmareloMind")
 app.setApplicationDisplayName("Amarelo Mind")
 
-icon_path = os.path.join(icons_dir, "App_icon.ico")
+icon_path = os.path.join(icons_dir, "Arquivos.png")
 if os.path.exists(icon_path):
     app.setWindowIcon(QIcon(icon_path))
-else:
-    icon_path = os.path.join(icons_dir, "App_icon.png")
-    if os.path.exists(icon_path):
-        app.setWindowIcon(QIcon(icon_path))
 
 file_to_load = None
 if len(sys.argv) > 1:

@@ -30,18 +30,43 @@ cp assets/icons/App_icon.png ${PKG_DIR}/usr/share/icons/hicolor/48x48/apps/amare
 python3 -c "
 import sys, os
 from PySide6.QtWidgets import QApplication
-from PySide6.QtGui import QImage, QTransform
+from PySide6.QtGui import QImage, QColor
 from PySide6.QtCore import Qt
 app = QApplication(sys.argv)
 src = QImage('assets/icons/Arquivos.png')
+
+# Auto-crop: find bounding box of non-transparent content
+w, h = src.width(), src.height()
+left, top, right, bottom = w, h, 0, 0
+for y in range(h):
+    for x in range(w):
+        if src.pixelColor(x, y).alpha() > 10:
+            left = min(left, x)
+            top = min(top, y)
+            right = max(right, x)
+            bottom = max(bottom, y)
+trimmed = src.copy(left, top, right - left + 1, bottom - top + 1)
+
 for s in [16, 22, 24, 32, 48, 64, 128, 256]:
     d = f'${PKG_DIR}/usr/share/icons/hicolor/{s}x{s}/mimetypes'
     os.makedirs(d, exist_ok=True)
-    scaled = src.scaled(s, s, Qt.KeepAspectRatioByExpanding, Qt.SmoothTransformation)
-    x = (scaled.width() - s) // 2
-    y = (scaled.height() - s) // 2
-    cropped = scaled.copy(x, y, s, s)
-    cropped.save(f'{d}/application-x-amind.png')
+    # Scale to fill, then center-crop
+    scaled = trimmed.scaled(s * 2, s * 2, Qt.KeepAspectRatio, Qt.SmoothTransformation)
+    icon = scaled.scaled(s, s, Qt.KeepAspectRatio, Qt.SmoothTransformation)
+    x = (icon.width() - s) // 2
+    y = (icon.height() - s) // 2
+    icon = icon.copy(x, y, s, s)
+    # Alpha-threshold: harden edges for small sizes
+    if s <= 48:
+        for py in range(s):
+            for px in range(s):
+                c = icon.pixelColor(px, py)
+                if 0 < c.alpha() < 180:
+                    c.setAlpha(0)
+                elif c.alpha() >= 180:
+                    c.setAlpha(255)
+                icon.setPixelColor(px, py, c)
+    icon.save(f'{d}/application-x-amind.png')
 " 2>&1
 
 mkdir -p ${PKG_DIR}/usr/bin
@@ -100,47 +125,50 @@ case "$1" in
             [ -d "$user_home/.config" ] || continue
             mimeapps="$user_home/.config/mimeapps.list"
 
-            # Garantir que o arquivo exista com as seções padrão
             if [ ! -f "$mimeapps" ]; then
                 mkdir -p "$user_home/.config"
                 printf '[Added Associations]\n[Default Applications]\n' > "$mimeapps"
             fi
 
-            # Garantir que a seção [Default Applications] exista
             if ! grep -q '^\[Default Applications\]' "$mimeapps" 2>/dev/null; then
                 printf '\n[Default Applications]\n' >> "$mimeapps"
             fi
 
-            # Remover entrada antiga
             sed -i '/^application\/x-amind=/d' "$mimeapps" 2>/dev/null || true
-
-            # Adicionar a associação correta
             sed -i '/^\[Default Applications\]/a application/x-amind=amarelo-mind.desktop' "$mimeapps" 2>/dev/null || true
 
-            # Limpar caches locais
             rm -f "$user_home/.local/share/applications/amarelo-mind.desktop" 2>/dev/null || true
             rm -f "$user_home/.local/share/applications/AmareloMind.desktop" 2>/dev/null || true
             rm -f "$user_home/.local/share/applications/mimeinfo.cache" 2>/dev/null || true
         done
 
-        # Atualizar caches de ícones do sistema
-        gtk-update-icon-cache -f /usr/share/icons/hicolor 2>/dev/null || true
-
-        # Copiar ícone MIME para o tema de ícones ativo do usuário (tamanhos corretos)
-        active_theme=$(gsettings get org.cinnamon.desktop.interface icon-theme 2>/dev/null || \
-                       gsettings get org.gnome.desktop.interface icon-theme 2>/dev/null || echo "")
-        active_theme=$(echo "$active_theme" | tr -d "'")
-        if [ -n "$active_theme" ] && [ -d "/usr/share/icons/$active_theme" ]; then
-            for s in 16 22 24 32 48 64 128 256; do
-                mkdir -p "/usr/share/icons/$active_theme/${s}x${s}/mimetypes"
-                cp "/usr/share/icons/hicolor/${s}x${s}/mimetypes/application-x-amind.png" \
-                   "/usr/share/icons/$active_theme/${s}x${s}/mimetypes/" 2>/dev/null || true
+        # Limpar ícones MIME de tamanhos antigos/inválidos em todos os temas
+        for stale_size in 36 72 96 192 512; do
+            rm -f "/usr/share/icons/hicolor/${stale_size}x${stale_size}/mimetypes/application-x-amind.png" 2>/dev/null || true
+            rmdir "/usr/share/icons/hicolor/${stale_size}x${stale_size}/mimetypes" 2>/dev/null || true
+        done
+        for icon_dir in /usr/share/icons/*/; do
+            theme=$(basename "$icon_dir")
+            for stale_size in 36 72 96 192 512; do
+                rm -f "${icon_dir}${stale_size}x${stale_size}/mimetypes/application-x-amind.png" 2>/dev/null || true
+                rmdir "${icon_dir}${stale_size}x${stale_size}/mimetypes" 2>/dev/null || true
             done
-            gtk-update-icon-cache -f "/usr/share/icons/$active_theme" 2>/dev/null || true
-        fi
-        gtk-update-icon-cache -f /usr/share/icons/hicolor 2>/dev/null || true
+        done
 
-        # Notificar monitor GNOME sobre mudança de MIME
+        # Copiar ícone MIME para hicolor + temas que declaram mimetypes no index.theme
+        # Temas sem declaração mimetypes causam todos os tamanhos a usarem 16x16
+        for icon_dir in /usr/share/icons/*/; do
+            theme=$(basename "$icon_dir")
+            if grep -q 'mimetypes' "${icon_dir}index.theme" 2>/dev/null; then
+                for s in 16 22 24 32 48 64 128 256; do
+                    mkdir -p "${icon_dir}${s}x${s}/mimetypes"
+                    cp "/usr/share/icons/hicolor/${s}x${s}/mimetypes/application-x-amind.png" \
+                       "${icon_dir}${s}x${s}/mimetypes/" 2>/dev/null || true
+                done
+                gtk-update-icon-cache -f "${icon_dir}" 2>/dev/null || true
+            fi
+        done
+
         if command -v update-desktop-database >/dev/null 2>&1; then
             update-desktop-database /usr/share/applications 2>/dev/null || true
         fi
@@ -159,6 +187,15 @@ case "$1" in
         update-mime-database /usr/share/mime || true
         update-desktop-database || true
         rm -f /usr/share/icons/hicolor/*/mimetypes/application-x-amind.png
+        for stale_size in 36 72 96 192 512; do
+            rmdir "/usr/share/icons/hicolor/${stale_size}x${stale_size}/mimetypes" 2>/dev/null || true
+        done
+        active_theme=$(gsettings get org.cinnamon.desktop.interface icon-theme 2>/dev/null || \
+                       gsettings get org.gnome.desktop.interface icon-theme 2>/dev/null || echo "")
+        active_theme=$(echo "$active_theme" | tr -d "'")
+        if [ -n "$active_theme" ]; then
+            rm -f "/usr/share/icons/$active_theme"/*/mimetypes/application-x-amind.png 2>/dev/null || true
+        fi
         gtk-update-icon-cache /usr/share/icons/hicolor 2>/dev/null || true
         ;;
     remove|upgrade|disappear)

@@ -759,7 +759,7 @@ class AmareloMainWindow(QMainWindow):
         super().__init__()
 
         self.setWindowTitle("Amarelo Mind")
-        self.setWindowIcon(IconManager.load_icon("App_icon.ico"))
+        self.setWindowIcon(IconManager.load_icon("Arquivos.png"))
 
         self.undo_stack = QUndoStack(self)
         self.current_file = None
@@ -1126,7 +1126,7 @@ class AmareloMainWindow(QMainWindow):
             for item in self.hide_mode_hidden_items:
                 item.setVisible(True)
             self.hide_mode_hidden_items = []
-            # Alternar ícone para "olho" (mostrar)
+            # Alternar ícone para Ocultar
             if hasattr(self, 'act_hide'):
                 self.act_hide.setIcon(IconManager.load_icon("Ocultar.png", "O"))
         else:
@@ -1168,9 +1168,9 @@ class AmareloMainWindow(QMainWindow):
                         conn.setVisible(False)
                         self.hide_mode_hidden_items.append(conn)
             
-            # Alternar ícone para "olho riscado" (ocultar)
+            # Alternar ícone para Reexibir
             if hasattr(self, 'act_hide'):
-                self.act_hide.setIcon(IconManager.load_icon("Ocultar_off.png", "X"))
+                self.act_hide.setIcon(IconManager.load_icon("Reexibir.png", "R"))
     
     def reveal_all_items(self):
         """Reexibe todos os objetos ocultos"""
@@ -1179,6 +1179,8 @@ class AmareloMainWindow(QMainWindow):
             for item in self.hide_mode_hidden_items:
                 item.setVisible(True)
             self.hide_mode_hidden_items = []
+            if hasattr(self, 'act_hide'):
+                self.act_hide.setIcon(IconManager.load_icon("Ocultar.png", "O"))
     
     # --------------------------------------------------
     # ESTADOS
