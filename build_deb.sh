@@ -30,7 +30,7 @@ cp assets/icons/App_icon.png ${PKG_DIR}/usr/share/icons/hicolor/48x48/apps/amare
 python3 -c "
 import sys, os
 from PySide6.QtWidgets import QApplication
-from PySide6.QtGui import QImage, QColor
+from PySide6.QtGui import QImage, QPixmap, QPainter, QColor
 from PySide6.QtCore import Qt
 app = QApplication(sys.argv)
 src = QImage('assets/icons/Arquivos.png')
@@ -47,26 +47,24 @@ for y in range(h):
             bottom = max(bottom, y)
 trimmed = src.copy(left, top, right - left + 1, bottom - top + 1)
 
+# Downscale once per target size using high-quality (Antialiasing + SmoothPixmap)
+# painting, which produces smooth, non-pixelated edges (no alpha thresholding).
 for s in [16, 22, 24, 32, 48, 64, 128, 256]:
     d = f'${PKG_DIR}/usr/share/icons/hicolor/{s}x{s}/mimetypes'
     os.makedirs(d, exist_ok=True)
-    # Scale to fill, then center-crop
-    scaled = trimmed.scaled(s * 2, s * 2, Qt.KeepAspectRatio, Qt.SmoothTransformation)
-    icon = scaled.scaled(s, s, Qt.KeepAspectRatio, Qt.SmoothTransformation)
-    x = (icon.width() - s) // 2
-    y = (icon.height() - s) // 2
-    icon = icon.copy(x, y, s, s)
-    # Alpha-threshold: harden edges for small sizes
-    if s <= 48:
-        for py in range(s):
-            for px in range(s):
-                c = icon.pixelColor(px, py)
-                if 0 < c.alpha() < 180:
-                    c.setAlpha(0)
-                elif c.alpha() >= 180:
-                    c.setAlpha(255)
-                icon.setPixelColor(px, py, c)
-    icon.save(f'{d}/application-x-amind.png')
+    pix = QPixmap.fromImage(trimmed)
+    out = QPixmap(s, s)
+    out.fill(Qt.transparent)
+    p = QPainter(out)
+    p.setRenderHint(QPainter.SmoothPixmapTransform, True)
+    p.setRenderHint(QPainter.Antialiasing, True)
+    # Fit while keeping aspect ratio, centered
+    scaled = pix.scaled(s, s, Qt.KeepAspectRatio, Qt.SmoothTransformation)
+    x = (s - scaled.width()) // 2
+    y = (s - scaled.height()) // 2
+    p.drawPixmap(x, y, scaled)
+    p.end()
+    out.toImage().save(f'{d}/application-x-amind.png')
 " 2>&1
 
 mkdir -p ${PKG_DIR}/usr/bin
