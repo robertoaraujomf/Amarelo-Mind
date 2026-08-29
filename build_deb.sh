@@ -2,7 +2,7 @@
 set -e
 
 APP_NAME="amarelo-mind"
-VERSION="1.6.0"
+VERSION="1.6.3"
 BUILD_DIR="build_deb"
 PKG_DIR="${BUILD_DIR}/${APP_NAME}_${VERSION}"
 
@@ -65,6 +65,50 @@ for s in [16, 22, 24, 32, 48, 64, 128, 256]:
     p.drawPixmap(x, y, scaled)
     p.end()
     out.toImage().save(f'{d}/application-x-amind.png')
+
+# O resolvedor de ícones (gtk_icon_theme_lookup_by_gicon, usado pelo Nemo) busca a
+# lista de nomes [application-x-amind, application-x-generic, ...] tema a tema.
+# Como o tema 'Adwaita' é SEMPRE pesquisado antes do hicolor e contém o icone
+# generico, o fallback generico vencia antes de chegar ao hicolor. Solucao:
+# fornecer um SVG escalavel do .amind no proprio Adwaita (que declara
+# 'scalable/mimetypes'), garantindo o icon em qualquer tamanho, para qualquer tema.
+from PySide6.QtCore import QByteArray, QBuffer, QIODevice
+import base64 as _b64
+
+def _svg_for(icon, size=512):
+    # centraliza em canvas 512 com o conteudo em alta resolucao
+    canvas = QImage(size, size, QImage.Format_ARGB32)
+    canvas.fill(Qt.transparent)
+    p = QPainter(canvas)
+    p.setRenderHint(QPainter.SmoothPixmapTransform, True)
+    scaled = icon.scaled(size, size, Qt.KeepAspectRatio, Qt.SmoothTransformation)
+    x = (size - scaled.width()) // 2
+    y = (size - scaled.height()) // 2
+    p.drawImage(x, y, scaled)
+    p.end()
+    ba = QByteArray()
+    buf = QBuffer(ba)
+    buf.open(QIODevice.WriteOnly)
+    canvas.save(buf, 'PNG')
+    b64 = _b64.b64encode(bytes(ba)).decode()
+    return (f'<svg xmlns=\"http://www.w3.org/2000/svg\" width=\"{size}\" height=\"{size}\" '
+            f'viewBox=\"0 0 {size} {size}\"><image width=\"{size}\" height=\"{size}\" '
+            f'href=\"data:image/png;base64,{b64}\"/></svg>\\n')
+
+svg_str = _svg_for(QPixmap.fromImage(trimmed).toImage())
+docker = '${PKG_DIR}/usr/share/amarelo-mind/icons_mime'
+os.makedirs(docker, exist_ok=True)
+open(docker + '/application-x-amind.svg', 'w').write(svg_str)
+
+# instalar tambem dentro do tema Adwaita (sempre presente na cadeia de temas)
+adw_svg_dir = '${PKG_DIR}/usr/share/icons/Adwaita/scalable/mimetypes'
+adw_png_dir = '${PKG_DIR}/usr/share/icons/Adwaita/16x16/mimetypes'
+os.makedirs(adw_svg_dir, exist_ok=True)
+os.makedirs(adw_png_dir, exist_ok=True)
+open(f'{adw_svg_dir}/application-x-amind.svg', 'w').write(svg_str)
+import shutil
+corner = '${PKG_DIR}/usr/share/icons/hicolor/16x16/mimetypes/application-x-amind.png'
+shutil.copyfile(corner, f'{adw_png_dir}/application-x-amind.png')
 " 2>&1
 
 mkdir -p ${PKG_DIR}/usr/bin
@@ -140,31 +184,43 @@ case "$1" in
             rm -f "$user_home/.local/share/applications/mimeinfo.cache" 2>/dev/null || true
         done
 
-        # Limpar ícones MIME de tamanhos antigos/inválidos em todos os temas
+        # Remover cópias antigas do ícone MIME de TODOS os temas, exceto hicolor
+        # e Adwaita. Copiar o ícone para os temas "sombreava" o conjunto completo
+        # de tamanhos do hicolor: o resolvedor de ícones (GTK) encontrava uma
+        # cópia parcial (ex.: só 16x16) no tema ativo e nunca caía no hicolor,
+        # exibindo o ícone 16x16 escalado (qualidade baixa) em qualquer tamanho.
+        # O tema Adwaita é preservado pois é pesquisado SEMPRE antes do hicolor e
+        # mantém o SVG escalável do .amind (senão o fallback 'application-x-generic'
+        # do próprio Adwaita venceria e nenhum arquivo .amind mostraria o ícone).
+        for icon_dir in /usr/share/icons/*/; do
+            theme=$(basename "$icon_dir")
+            [ "$theme" = "hicolor" -o "$theme" = "Adwaita" ] && continue
+            rm -f "${icon_dir}"*/mimetypes/application-x-amind.png 2>/dev/null || true
+        done
         for stale_size in 36 72 96 192 512; do
             rm -f "/usr/share/icons/hicolor/${stale_size}x${stale_size}/mimetypes/application-x-amind.png" 2>/dev/null || true
-            rmdir "/usr/share/icons/hicolor/${stale_size}x${stale_size}/mimetypes" 2>/dev/null || true
-        done
-        for icon_dir in /usr/share/icons/*/; do
-            theme=$(basename "$icon_dir")
-            for stale_size in 36 72 96 192 512; do
-                rm -f "${icon_dir}${stale_size}x${stale_size}/mimetypes/application-x-amind.png" 2>/dev/null || true
-                rmdir "${icon_dir}${stale_size}x${stale_size}/mimetypes" 2>/dev/null || true
-            done
         done
 
-        # Copiar ícone MIME para hicolor + temas que declaram mimetypes no index.theme
-        # Temas sem declaração mimetypes causam todos os tamanhos a usarem 16x16
-        for icon_dir in /usr/share/icons/*/; do
-            theme=$(basename "$icon_dir")
-            if grep -q 'mimetypes' "${icon_dir}index.theme" 2>/dev/null; then
-                for s in 16 22 24 32 48 64 128 256; do
-                    mkdir -p "${icon_dir}${s}x${s}/mimetypes"
-                    cp "/usr/share/icons/hicolor/${s}x${s}/mimetypes/application-x-amind.png" \
-                       "${icon_dir}${s}x${s}/mimetypes/" 2>/dev/null || true
-                done
-                gtk-update-icon-cache -f "${icon_dir}" 2>/dev/null || true
+        # Garantir o ícone no tema Adwaita (SVG escalável + PNG 16px)
+        if [ -d "/usr/share/icons/Adwaita" ]; then
+            mkdir -p /usr/share/icons/Adwaita/scalable/mimetypes \
+                     /usr/share/icons/Adwaita/16x16/mimetypes
+            cp -f /usr/share/amarelo-mind/icons_mime/application-x-amind.svg \
+                  /usr/share/icons/Adwaita/scalable/mimetypes/ 2>/dev/null || true
+            cp -f /usr/share/icons/hicolor/16x16/mimetypes/application-x-amind.png \
+                  /usr/share/icons/Adwaita/16x16/mimetypes/ 2>/dev/null || true
+            if [ -d /usr/share/icons/gnome ]; then
+                mkdir -p /usr/share/icons/gnome/scalable/mimetypes
+                cp -f /usr/share/amarelo-mind/icons_mime/application-x-amind.svg \
+                      /usr/share/icons/gnome/scalable/mimetypes/ 2>/dev/null || true
             fi
+        fi
+
+        # Reconstruir os caches dos temas (incluindo os que não declaram 'mimetypes'
+        # no index.theme, como o Mint-Y-Purple).
+        for icon_dir in /usr/share/icons/*/; do
+            [ -f "${icon_dir}index.theme" ] || continue
+            gtk-update-icon-cache -f "${icon_dir}" 2>/dev/null || true
         done
 
         if command -v update-desktop-database >/dev/null 2>&1; then
@@ -185,6 +241,10 @@ case "$1" in
         update-mime-database /usr/share/mime || true
         update-desktop-database || true
         rm -f /usr/share/icons/hicolor/*/mimetypes/application-x-amind.png
+        rm -f /usr/share/icons/Adwaita/scalable/mimetypes/application-x-amind.svg
+        rm -f /usr/share/icons/Adwaita/16x16/mimetypes/application-x-amind.png
+        rm -f /usr/share/icons/gnome/scalable/mimetypes/application-x-amind.svg
+        rm -rf /usr/share/amarelo-mind/icons_mime
         for stale_size in 36 72 96 192 512; do
             rmdir "/usr/share/icons/hicolor/${stale_size}x${stale_size}/mimetypes" 2>/dev/null || true
         done
@@ -195,6 +255,7 @@ case "$1" in
             rm -f "/usr/share/icons/$active_theme"/*/mimetypes/application-x-amind.png 2>/dev/null || true
         fi
         gtk-update-icon-cache /usr/share/icons/hicolor 2>/dev/null || true
+        gtk-update-icon-cache /usr/share/icons/Adwaita 2>/dev/null || true
         ;;
     remove|upgrade|disappear)
         ;;
