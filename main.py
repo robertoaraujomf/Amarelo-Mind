@@ -466,6 +466,40 @@ class InfiniteCanvas(QGraphicsView):
         """Define o stack de Undo/Redo"""
         self.undo_stack = undo_stack
 
+    def keyPressEvent(self, event):
+        """Movimento com setas (10 px) para itens selecionados ou pan da tela.
+        Durante edição de texto de um nó, as teclas vão para o editor."""
+        focus_item = self.scene().focusItem()
+        if isinstance(focus_item, QGraphicsTextItem) and \
+           (focus_item.textInteractionFlags() & Qt.TextEditable):
+            super().keyPressEvent(event)
+            return
+
+        key = event.key()
+        if key not in (Qt.Key_Left, Qt.Key_Right, Qt.Key_Up, Qt.Key_Down):
+            super().keyPressEvent(event)
+            return
+
+        step = 10
+        delta = {Qt.Key_Left: QPointF(-step, 0),
+                 Qt.Key_Right: QPointF(step, 0),
+                 Qt.Key_Up: QPointF(0, -step),
+                 Qt.Key_Down: QPointF(0, step)}[key]
+
+        selected = [it for it in self.scene().selectedItems()
+                    if isinstance(it, (StyledNode, MediaItem))]
+        if selected:
+            for item in selected:
+                item.setPos(item.pos() + delta)
+        else:
+            # Pan da tela usando as scrollbars
+            h_scroll = self.horizontalScrollBar()
+            v_scroll = self.verticalScrollBar()
+            h_scroll.setValue(h_scroll.value() + int(delta.x()))
+            v_scroll.setValue(v_scroll.value() + int(delta.y()))
+            self._extend_scroll_range_if_needed()
+        event.accept()
+
     def wheelEvent(self, event: QWheelEvent):
         factor = 1.15 if event.angleDelta().y() > 0 else 0.85
         self.scale(factor, factor)
@@ -821,6 +855,8 @@ class AmareloMainWindow(QMainWindow):
         }
         
         self.load_shortcuts_from_file()
+        # Evita atalhos ambíguos (ex.: dois botões com a mesma tecla)
+        self.sanitize_duplicate_shortcuts()
         
         self.load_styles()
         self.setup_toolbar()
@@ -1030,6 +1066,22 @@ class AmareloMainWindow(QMainWindow):
         except Exception as e:
             print(f"Aviso: Não foi salvar atalhos: {e}")
 
+    def sanitize_duplicate_shortcuts(self):
+        """Remove atalhos duplicados: quando dois botões usam a mesma combinação,
+        o Qt marca o atalho como ambíguo ('Ambiguous shortcut overload') e
+        NENHUM dos dois dispara. Mantém o primeiro botão da lista e limpa os demais."""
+        seen = {}
+        for name in list(self.custom_shortcuts.keys()):
+            seq = (self.custom_shortcuts.get(name) or "").strip()
+            self.custom_shortcuts[name] = seq
+            if not seq:
+                continue
+            if seq in seen:
+                print(f"Aviso: atalho '{seq}' já usado por '{seen[seq]}' - removido de '{name}'")
+                self.custom_shortcuts[name] = ""
+            else:
+                seen[seq] = name
+
     # --------------------------------------------------
     # TOOLBAR
     # --------------------------------------------------
@@ -1045,9 +1097,10 @@ class AmareloMainWindow(QMainWindow):
             print(f"DEBUG: Loading icon '{icon}' - valid={not loaded_icon.isNull()}")
             act = QAction(loaded_icon, "", self)
             act.setToolTip(tooltip)
-            shortcut = self.custom_shortcuts.get(shortcut_key) if shortcut_key else None
-            if shortcut:
-                act.setShortcut(shortcut)
+            if shortcut_key is not None:
+                # Sempre atribuir o atalho (mesmo vazio limpa o anterior),
+                # para que atalhos salvos sejam aplicados JÁ na inicialização.
+                act.setShortcut(self.custom_shortcuts.get(shortcut_key, ""))
             act.triggered.connect(slot)
             tb.addAction(act)
             return act
@@ -1058,7 +1111,7 @@ class AmareloMainWindow(QMainWindow):
         # Save button - autosave always on after file is created
         self.act_save = make_action("Salvar.png", "Salvar alterações", self.save_project, "Salvar")
         
-        self.act_export = make_action("Exportar.png", "Exportar como imagem", self.export_png)
+        self.act_export = make_action("Exportar.png", "Exportar como imagem", self.export_png, "Exportar")
 
         tb.addSeparator()
 
@@ -1083,7 +1136,7 @@ class AmareloMainWindow(QMainWindow):
 
         self.act_add = make_action("Adicionar.png", "Adicionar objeto", self.add_object, "Adicionar")
         self.act_title = make_action("Titulo.png", "Marcar como título", self.toggle_title, "Título")
-        self.act_media = make_action("Midia.png", "Mídia", self.insert_media)
+        self.act_media = make_action("Midia.png", "Mídia", self.insert_media, "Mídia")
         self.act_connect = make_action("Conectar.png", "Conectar", self.connect_nodes, "Conectar")
         
         # Botão ocultar/reexibir
@@ -1093,8 +1146,8 @@ class AmareloMainWindow(QMainWindow):
 
         tb.addSeparator()
 
-        self.act_font = make_action("Fonte.png", "Fonte", self.change_font)
-        self.act_colors = make_action("Cores.png", "Cores", self.change_colors)
+        self.act_font = make_action("Fonte.png", "Fonte", self.change_font, "Fonte")
+        self.act_colors = make_action("Cores.png", "Cores", self.change_colors, "Cores")
 
         tb.addSeparator()
 
@@ -1649,52 +1702,6 @@ class AmareloMainWindow(QMainWindow):
                 if hasattr(item.text, 'selectionChanged'):
                     item.text.selectionChanged.connect(self.update_button_states)
 
-    # --------------------------------------------------
-    # TECLAS DE ATALHO
-    # --------------------------------------------------
-    def keyPressEvent(self, event):
-        """Manipula eventos de teclado para movimento dos objetos selecionados ou pan da tela"""
-        
-        # Tecla + para adicionar objeto
-        if event.key() == Qt.Key_Plus:
-            self.add_object()
-            event.accept()
-            return
-        
-        selected_items = [item for item in self.scene.selectedItems() if isinstance(item, (StyledNode, MediaItem))]
-        
-        # Movimento com setas (10 pixels por vez)
-        delta_x = 0
-        delta_y = 0
-        step = 10
-        
-        if event.key() == Qt.Key_Left:
-            delta_x = step
-        elif event.key() == Qt.Key_Right:
-            delta_x = -step
-        elif event.key() == Qt.Key_Up:
-            delta_y = step
-        elif event.key() == Qt.Key_Down:
-            delta_y = -step
-        else:
-            super().keyPressEvent(event)
-            return
-        
-        if selected_items:
-            # Mover todos os itens selecionados
-            for item in selected_items:
-                new_pos = item.pos() + QPointF(delta_x, delta_y)
-                item.setPos(new_pos)
-            event.accept()
-        else:
-            # Mover a tela (pan) usando scrollbars
-            h_scroll = self.view.horizontalScrollBar()
-            v_scroll = self.view.verticalScrollBar()
-            h_scroll.setValue(h_scroll.value() + delta_x)
-            v_scroll.setValue(v_scroll.value() + delta_y)
-            self.view._extend_scroll_range_if_needed()
-            event.accept()
-    
     # --------------------------------------------------
     # FUNCIONALIDADES
     # --------------------------------------------------
@@ -2500,7 +2507,7 @@ class AmareloMainWindow(QMainWindow):
                         return True
                     
                     if key in (Qt.Key_Control, Qt.Key_Shift, Qt.Key_Alt, Qt.Key_Meta,
-                               Qt.Key_Tab, Qt.Key_Backtab, Qt.Key_Return, Qt.Key_Enter):
+                           Qt.Key_Tab, Qt.Key_Backtab):
                         return False
                     
                     combo = []
@@ -2557,9 +2564,25 @@ class AmareloMainWindow(QMainWindow):
             edit.installEventFilter(shortcut_filter)
         
         def apply_shortcuts():
+            # Bloquear atalhos duplicados ANTES de salvar (Qt não dispara combinação ambígua)
+            ocorrencias = {}
             for name, edit in shortcut_edits.items():
-                self.custom_shortcuts[name] = edit.text()
-            
+                seq = edit.text().strip()
+                if not seq:
+                    continue
+                if seq in ocorrencias:
+                    QMessageBox.warning(
+                        dialog, "Atalho duplicado",
+                        f"O atalho '{seq}' já está em uso por '{ocorrencias[seq]}'.\n"
+                        "Limpe ou troque um dos dois antes de salvar."
+                    )
+                    return
+                ocorrencias[seq] = name
+
+            for name, edit in shortcut_edits.items():
+                self.custom_shortcuts[name] = edit.text().strip()
+
+            self.sanitize_duplicate_shortcuts()
             self.save_shortcuts_to_file()
             update_toolbar_shortcuts()
             QMessageBox.information(dialog, "Sucesso", "Atalhos salvos e atualizados!")
@@ -2711,7 +2734,7 @@ class AmareloMainWindow(QMainWindow):
         about_text = """
 <h2>Amarelo Mind</h2>
 
-<p><b>Versão 1.6.3</b></p>
+<p><b>Versão 1.6.4</b></p>
 
 <p>Um aplicativo de mapa mental moderno e intuitivo.</p>
 
