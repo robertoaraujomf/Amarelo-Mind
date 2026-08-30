@@ -69,7 +69,8 @@ class PersistenceManager:
                         "html": item.text.document().toHtml(),  # Salvar HTML completo com formatação
                         "type": item.node_type,
                         "shadow": item.has_shadow,
-                        "custom_color": item.custom_color
+                        "custom_color": item.custom_color,
+                        "is_title": bool(getattr(item, "_is_title", False))
                     }
                     data["nodes"].append(node_data)
                     nodes_by_id[node_id] = node_data
@@ -95,6 +96,37 @@ class PersistenceManager:
             print(f"Erro ao salvar projeto: {e}")
             return False
     
+    def _build_node(self, node_data):
+        """Cria um StyledNode a partir dos dados do arquivo (sem adicionar à cena)."""
+        from items.shapes import StyledNode
+        node = StyledNode(
+            node_data["x"],
+            node_data["y"],
+            int(node_data.get("w", 200)),
+            int(node_data.get("h", 100)),
+            node_data.get("type", "Normal")
+        )
+        # Usar HTML se disponível para preservar formatação
+        html_content = node_data.get("html")
+        if html_content:
+            node.text.setHtml(html_content)
+            # Forçar atualização da fonte do widget baseada no HTML
+            self._update_font_from_html(node, html_content)
+        else:
+            node.set_text(node_data.get("text", ""))
+        node.update_color()
+
+        custom_color = node_data.get("custom_color")
+        if custom_color:
+            node.set_background(QColor(custom_color))
+
+        if not node_data.get("shadow", True):
+            node.toggle_shadow()
+
+        if node_data.get("is_title"):
+            node.set_is_title(True)
+        return node
+
     def load_from_file(self, file_path: str, scene, window=None) -> bool:
         """
         Limpa a cena e reconstrói o mapa a partir do arquivo
@@ -124,32 +156,10 @@ class PersistenceManager:
             # Reconstruir nós primeiro
             nodes_list = data.get("nodes", [])
             print(f"DEBUG: Carregando {len(nodes_list)} nós")
-            
+
             for node_data in nodes_list:
                 print(f"DEBUG: Criando nó ID {node_data.get('id')} em ({node_data.get('x')}, {node_data.get('y')})")
-                node = StyledNode(
-                    node_data["x"],
-                    node_data["y"],
-                    int(node_data.get("w", 200)),
-                    int(node_data.get("h", 100)),
-                    node_data.get("type", "Normal")
-                )
-                # Usar HTML se disponível para preservar formatação
-                html_content = node_data.get("html")
-                if html_content:
-                    node.text.setHtml(html_content)
-                    # Forçar atualização da fonte do widget baseada no HTML
-                    self._update_font_from_html(node, html_content)
-                else:
-                    node.set_text(node_data.get("text", ""))
-                node.update_color()
-                
-                custom_color = node_data.get("custom_color")
-                if custom_color:
-                    node.set_background(QColor(custom_color))
-                
-                if not node_data.get("shadow", True):
-                    node.toggle_shadow()
+                node = self._build_node(node_data)
                 scene.addItem(node)
                 self.nodes_map[node_data["id"]] = node
                 
@@ -179,3 +189,56 @@ class PersistenceManager:
         except Exception as e:
             print(f"Erro ao carregar projeto: {e}")
             return False
+
+    def import_from_file(self, file_path: str, offset=None):
+        """Importa nós/conexões de um arquivo sem limpar a cena.
+
+        Args:
+            file_path: Caminho do arquivo .amind para importar.
+            offset: Ponto (QPointF) onde o canto superior-esquerdo da caixa
+                do mapa importado será posicionado. Se None, mantém as
+                coordenadas originais do arquivo.
+
+        Returns:
+            tuple: (nodes_map, connections) onde nodes_map mapeia os IDs do
+            arquivo para os novos objetos criados. Retorna (None, None) em caso de erro.
+        """
+        try:
+            from core.connection import SmartConnection
+
+            if not os.path.exists(file_path):
+                print(f"Arquivo não encontrado: {file_path}")
+                return None, None
+
+            with open(file_path, 'r', encoding='utf-8') as f:
+                data = json.load(f)
+
+            nodes_list = data.get("nodes", [])
+            nodes = [self._build_node(node_data) for node_data in nodes_list]
+
+            if nodes and offset is not None:
+                min_x = min(n.pos().x() for n in nodes)
+                min_y = min(n.pos().y() for n in nodes)
+                dx = offset.x() - min_x
+                dy = offset.y() - min_y
+                if dx or dy:
+                    for n in nodes:
+                        n.setPos(n.pos().x() + dx, n.pos().y() + dy)
+
+            nodes_map = {}
+            for node_data, node in zip(nodes_list, nodes):
+                nodes_map[node_data["id"]] = node
+
+            connections_list = []
+            for conn_data in data.get("connections", []):
+                source_id = conn_data.get("source_id")
+                target_id = conn_data.get("target_id")
+                if source_id in nodes_map and target_id in nodes_map:
+                    connections_list.append(
+                        SmartConnection(nodes_map[source_id], nodes_map[target_id])
+                    )
+
+            return nodes_map, connections_list
+        except Exception as e:
+            print(f"Erro ao importar projeto: {e}")
+            return None, None

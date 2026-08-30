@@ -256,6 +256,69 @@ class RemoveItemCommand(QUndoCommand):
         self.scene.addItem(self.item)
 
 
+class SplitMapCommand(QUndoCommand):
+    """Move um subgrafo (objeto selecionado + descendentes) para uma nova janela.
+
+    Suporta desfazer/refazer: undo devolve os objetos ao mapa de origem e
+    restaura as conexões de contorno; redo os transfere novamente para o
+    mapa destino (a nova janela, onde o objeto selecionado vira título).
+    """
+    def __init__(self, source_scene, target_scene, target_window, nodes,
+                 conns_moved, conns_dropped, root):
+        super().__init__("Desmembrar mapa mental")
+        self.source_scene = source_scene
+        self.target_scene = target_scene
+        self.target_window = target_window  # Mantém a nova janela viva
+        self.nodes = nodes
+        self.conns_moved = conns_moved
+        self.conns_dropped = conns_dropped
+        self.root = root
+        self.is_styled_root = isinstance(root, StyledNode)
+        self.applied_title = False
+
+    def redo(self):
+        # Remover do mapa de origem
+        for conn in self.conns_moved + self.conns_dropped:
+            if conn.scene() is self.source_scene:
+                self.source_scene.removeItem(conn)
+        for item in self.nodes:
+            if item.scene() is self.source_scene:
+                self.source_scene.removeItem(item)
+        # Adicionar ao mapa destino
+        for item in self.nodes:
+            if item.scene() is not self.target_scene:
+                self.target_scene.addItem(item)
+        for conn in self.conns_moved:
+            if conn.scene() is not self.target_scene:
+                self.target_scene.addItem(conn)
+            conn.update_path()
+        # O objeto selecionado torna-se o título do novo mapa
+        if self.is_styled_root and not self.root._is_title:
+            self.root.set_is_title(True)
+            self.applied_title = True
+
+    def undo(self):
+        # Reverter o estado de título do objeto selecionado
+        if self.applied_title and self.root._is_title:
+            self.root.set_is_title(False)
+            self.applied_title = False
+        # Remover do mapa destino
+        for conn in self.conns_moved:
+            if conn.scene() is self.target_scene:
+                self.target_scene.removeItem(conn)
+        for item in self.nodes:
+            if item.scene() is self.target_scene:
+                self.target_scene.removeItem(item)
+        # Devolver ao mapa de origem
+        for item in self.nodes:
+            if item.scene() is not self.source_scene:
+                self.source_scene.addItem(item)
+        for conn in self.conns_moved + self.conns_dropped:
+            if conn.scene() is not self.source_scene:
+                self.source_scene.addItem(conn)
+            conn.update_path()
+
+
 class PasteTextCommand(QUndoCommand):
     """Comando para colar texto em um nó"""
     def __init__(self, node, old_html, new_html, description="Colar texto"):
@@ -1295,9 +1358,11 @@ class AmareloMainWindow(QMainWindow):
         can_paste = bool(clipboard_text) and (is_text_in_node or has_styled_node)
         self.act_paste.setEnabled(can_paste)
 
-        # Botão Conectar: habilitado se há 2+ objetos selecionados (StyledNode ou MediaItem)
+        # Botão Conectar: habilitado se há 1+ objeto selecionado (StyledNode ou MediaItem).
+        # Com 1 objeto, abre o diálogo de desmembrar/conectar a outro mapa.
+        # Com 2+, conecta os selecionados entre si.
         connectable_items = [i for i in sel if isinstance(i, (StyledNode, MediaItem))]
-        self.act_connect.setEnabled(len(connectable_items) >= 2)
+        self.act_connect.setEnabled(len(connectable_items) >= 1)
 
         # Botão Excluir: habilitado se há 1+ objeto selecionado
         self.act_delete.setEnabled(has_sel)
@@ -1767,67 +1832,8 @@ class AmareloMainWindow(QMainWindow):
         sel = [item for item in self.scene.selectedItems() if isinstance(item, StyledNode)]
         if len(sel) != 1:
             return
-        
         node = sel[0]
-        
-        if node._is_title:
-            node._is_title = False
-            node.prepareGeometryChange()
-            
-            node.setRect(node._original_rect)
-            
-            if hasattr(node, '_original_font_size'):
-                font = node.text.font()
-                font.setPointSize(node._original_font_size)
-                font.setBold(False)
-                node.text.setFont(font)
-            
-            node.text.setTextWidth(node._original_rect.width() - 20)
-            node._center_text_vertical()
-            node.update_brush()
-        else:
-            node._is_title = True
-            node._original_rect = node.rect()
-            node._original_font_size = node.text.font().pointSize()
-            
-            from PySide6.QtCore import QRectF
-            
-            # Aplicar fonte de título primeiro para medir o texto corretamente
-            font = node.text.font()
-            font.setPointSize(node._original_font_size * 3)
-            font.setBold(True)
-            node.text.setFont(font)
-            
-            # Encontrar o menor círculo que cabe o texto
-            orig = node._original_rect
-            size = max(orig.width(), orig.height(), 80)
-            
-            for _ in range(20):
-                inscribed = size / 1.414
-                tw = max(20, inscribed - 20)
-                node.text.setTextWidth(tw)
-                text_size = node.text.document().size()
-                
-                if text_size.width() <= inscribed - 10 and text_size.height() <= inscribed - 10:
-                    break
-                
-                size = max(
-                    (text_size.width() + 20) * 1.42,
-                    (text_size.height() + 20) * 1.42,
-                    size * 1.15
-                )
-            
-            node.prepareGeometryChange()
-            node.setRect(QRectF(0, 0, size, size))
-            
-            # Garantir largura do texto conforme tamanho final
-            inscribed = size / 1.414
-            node.text.setTextWidth(max(20, inscribed - 20))
-            
-            node._center_text_vertical()
-            node.update_brush()
-            node.update()
-        
+        node.set_is_title(not node._is_title)
         self.scene.update()
 
     def delete_selected(self):
@@ -1850,8 +1856,20 @@ class AmareloMainWindow(QMainWindow):
                 self.undo_stack.push(RemoveItemCommand(self.scene, item, "Remover objeto"))
 
     def connect_nodes(self):
-        """Conecta ou desconecta objetos selecionados"""
+        """Conecta ou desconecta objetos selecionados.
+
+        Com exatamente 1 objeto selecionado, abre um diálogo com as opções:
+        Desmembrar mapa mental, Conectar a outro mapa mental e Cancelar.
+        Com 2+ objetos, conecta/desconecta os selecionados entre si.
+        """
         sel = [i for i in self.scene.selectedItems() if isinstance(i, (StyledNode, MediaItem))]
+        
+        if len(sel) == 1:
+            self._show_connect_dialog(sel[0])
+            return
+        
+        if len(sel) < 2:
+            return
         
         # Verificar se já existem conexões entre os objetos selecionados
         connections_to_remove = []
@@ -1879,6 +1897,170 @@ class AmareloMainWindow(QMainWindow):
         # Remover conexões existentes (desconectar)
         for conn in connections_to_remove:
             self.undo_stack.push(RemoveItemCommand(self.scene, conn, "Desconectar nós"))
+
+    # --------------------------------------------------
+    # DIÁLOGO CONECTAR (1 OBJETO SELECIONADO)
+    # --------------------------------------------------
+    def _show_connect_dialog(self, obj):
+        """Exibe o diálogo de conectividade para um único objeto selecionado."""
+        msg = QMessageBox(self)
+        msg.setWindowTitle("Conectar")
+        msg.setIcon(QMessageBox.Icon.Question)
+        msg.setText("O que você deseja fazer?")
+        btn_split = msg.addButton("Desmembrar mapa mental", QMessageBox.ButtonRole.AcceptRole)
+        btn_merge = msg.addButton("Conectar a outro mapa mental", QMessageBox.ButtonRole.AcceptRole)
+        btn_cancel = msg.addButton("Cancelar", QMessageBox.ButtonRole.RejectRole)
+        msg.exec()
+        clicked = msg.clickedButton()
+        if clicked == btn_split:
+            self._split_mindmap(obj)
+        elif clicked == btn_merge:
+            self._connect_to_other_mindmap(obj)
+        # Cancelar: nada é feito
+
+    def _get_posterior_subgraph(self, obj):
+        """Retorna (descendants, conns_both, conns_boundary).
+
+        descendants: objetos alcançados a partir de obj via source→target (recursivo).
+        conns_both: conexões com ambas as pontas dentro de {obj} + descendants.
+        conns_boundary: conexões que tocam o subgrafo mas só têm uma ponta nele.
+        """
+        descendants = set()
+        stack = [obj]
+        while stack:
+            cur = stack.pop()
+            for item in self.scene.items():
+                if not isinstance(item, SmartConnection):
+                    continue
+                if item.source is cur and item.target not in descendants:
+                    descendants.add(item.target)
+                    stack.append(item.target)
+        
+        remove_set = {obj} | descendants
+        conns_both = []
+        conns_boundary = []
+        for item in self.scene.items():
+            if not isinstance(item, SmartConnection):
+                continue
+            in_src = item.source in remove_set
+            in_tgt = item.target in remove_set
+            if in_src and in_tgt:
+                conns_both.append(item)
+            elif in_src or in_tgt:
+                conns_boundary.append(item)
+        return descendants, conns_both, conns_boundary
+
+    def _split_mindmap(self, obj):
+        """Desmembra o mapa a partir do objeto selecionado.
+
+        O objeto selecionado vira o TÍTULO de um novo mapa (nova janela),
+        junto com toda a sua sub-árvore posterior (source→target). Os objetos
+        que levavam até ele permanecem no mapa atual.
+        """
+        descendants, conns_both, conns_boundary = self._get_posterior_subgraph(obj)
+        
+        if not descendants:
+            QMessageBox.information(
+                self, "Desmembrar mapa mental",
+                "O objeto selecionado não possui sub-mapa posterior.\nNenhuma alteração foi feita."
+            )
+            return
+        
+        remove_set = [obj] + sorted(descendants, key=id)
+        
+        # Criar a nova janela e transferir o subgrafo via comando undoável
+        new_win = AmareloMainWindow()
+        if not hasattr(self, "_opened_windows"):
+            self._opened_windows = []
+        self._opened_windows.append(new_win)
+        cmd = SplitMapCommand(
+            self.scene, new_win.scene, new_win,
+            remove_set, conns_both, conns_boundary, obj
+        )
+        self.undo_stack.push(cmd)
+        
+        new_win._connect_text_signals()
+        new_win.scene.clearSelection()
+        obj.setSelected(True)
+        new_win.update_button_states()
+        new_win.show()
+        new_win.view.centerOn(obj)
+        
+        self.update_button_states()
+        # Alteração estrutural recente: garante persistência imediata
+        if self.autosave_enabled and self.current_file:
+            self._autosave()
+
+    def _connect_to_other_mindmap(self, obj):
+        """Conecta o objeto selecionado ao título de outro arquivo de mapa mental."""
+        path, _ = QFileDialog.getOpenFileName(
+            self, "Abrir Arquivo", "", "Amarelo Mind (*.amind);;JSON (*.json)"
+        )
+        if not path:
+            return
+        
+        # Ler apenas os dados para descobrir os títulos
+        try:
+            with open(path, "r", encoding="utf-8") as f:
+                data = json.load(f)
+        except Exception as e:
+            QMessageBox.critical(self, "Erro", f"Não foi possível ler o arquivo:\n{e}")
+            return
+        
+        title_nodes = [n for n in data.get("nodes", []) if n.get("is_title")]
+        if not title_nodes:
+            QMessageBox.warning(
+                self, "Erro",
+                "O arquivo selecionado não possui nenhum objeto Título."
+            )
+            return
+        
+        chosen_title_data = title_nodes[0]
+        if len(title_nodes) > 1:
+            options = []
+            for i, n in enumerate(title_nodes):
+                text = (n.get("text") or "").strip()
+                options.append(text if text else f"Título {i + 1}")
+            choice, ok = QInputDialog.getItem(
+                self, "Conectar a outro mapa mental",
+                "O arquivo possui mais de um título.\nA qual título o objeto selecionado deve se conectar?",
+                options, 0, False
+            )
+            if not ok:
+                return
+            idx = options.index(choice) if choice in options else 0
+            chosen_title_data = title_nodes[idx]
+        
+        # Posicionar o mapa importado à direita do objeto selecionado
+        anchor = QPointF(
+            obj.sceneBoundingRect().right() + 80,
+            obj.sceneBoundingRect().top()
+        )
+        nodes_map, connections = self.persistence.import_from_file(path, offset=anchor)
+        if nodes_map is None:
+            QMessageBox.critical(self, "Erro", "Falha ao importar o arquivo selecionado.")
+            return
+        if not nodes_map:
+            QMessageBox.warning(self, "Erro", "O arquivo selecionado não contém objetos para importar.")
+            return
+        
+        title_node = nodes_map.get(chosen_title_data.get("id"))
+        
+        self.undo_stack.beginMacro("Conectar a outro mapa mental")
+        for node in nodes_map.values():
+            self.undo_stack.push(AddItemCommand(self.scene, node, "Conectar a outro mapa mental", self))
+        for conn in connections:
+            self.undo_stack.push(AddItemCommand(self.scene, conn, "Conectar a outro mapa mental", self))
+        if title_node is not None:
+            connection = SmartConnection(obj, title_node)
+            self.undo_stack.push(AddItemCommand(self.scene, connection, "Conectar a outro mapa mental", self))
+        self.undo_stack.endMacro()
+        
+        self._connect_text_signals()
+        self.scene.clearSelection()
+        if title_node is not None:
+            title_node.setSelected(True)
+        self.update_button_states()
 
     def copy_content(self):
         # 1. Tenta copiar de item de texto em foco
@@ -2734,7 +2916,7 @@ class AmareloMainWindow(QMainWindow):
         about_text = """
 <h2>Amarelo Mind</h2>
 
-<p><b>Versão 1.6.4</b></p>
+<p><b>Versão 1.6.5</b></p>
 
 <p>Um aplicativo de mapa mental moderno e intuitivo.</p>
 

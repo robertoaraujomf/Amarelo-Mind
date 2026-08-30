@@ -468,6 +468,77 @@ class StyledNode(QGraphicsRectItem):
         grad.setColorAt(1, color.darker(110))
         self.setBrush(QBrush(grad))
 
+    # -------------------------------
+    # TÍTULO
+    # -------------------------------
+    def set_is_title(self, is_title):
+        """Transforma o nó em título ou remove o título."""
+        if bool(is_title) == self._is_title:
+            return
+        if is_title:
+            self._apply_title_state()
+        else:
+            self._remove_title_state()
+
+    def _apply_title_state(self):
+        self._is_title = True
+        self._original_rect = self.rect()
+        self._original_font_size = self.text.font().pointSize()
+
+        # Aplicar fonte de título primeiro para medir o texto corretamente
+        font = self.text.font()
+        font.setPointSize(self._original_font_size * 3)
+        font.setBold(True)
+        self.text.setFont(font)
+
+        # Encontrar o menor círculo que cabe o texto
+        orig = self._original_rect
+        size = max(orig.width(), orig.height(), 80)
+
+        for _ in range(20):
+            inscribed = size / 1.414
+            tw = max(20, inscribed - 20)
+            self.text.setTextWidth(tw)
+            text_size = self.text.document().size()
+
+            if text_size.width() <= inscribed - 10 and text_size.height() <= inscribed - 10:
+                break
+
+            size = max(
+                (text_size.width() + 20) * 1.42,
+                (text_size.height() + 20) * 1.42,
+                size * 1.15
+            )
+
+        self.prepareGeometryChange()
+        self.setRect(QRectF(0, 0, size, size))
+
+        # Garantir largura do texto conforme tamanho final
+        inscribed = size / 1.414
+        self.text.setTextWidth(max(20, inscribed - 20))
+
+        self._center_text_vertical()
+        self.update_color()
+        self.update()
+
+    def _remove_title_state(self):
+        self._is_title = False
+        self.prepareGeometryChange()
+
+        if not hasattr(self, '_original_rect'):
+            self._original_rect = self.rect()
+        self.setRect(self._original_rect)
+
+        if hasattr(self, '_original_font_size'):
+            font = self.text.font()
+            font.setPointSize(self._original_font_size)
+            font.setBold(False)
+            self.text.setFont(font)
+
+        self.text.setTextWidth(max(20, self._original_rect.width() - 20))
+        self._center_text_vertical()
+        self.update_color()
+
     def clone_without_content(self):
         r = self.rect()
         clone = StyledNode(self.x() + 30, self.y() + 30, int(r.width()), int(r.height()),
