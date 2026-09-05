@@ -1200,7 +1200,7 @@ class AmareloMainWindow(QMainWindow):
         self.act_add = make_action("Adicionar.png", "Adicionar objeto", self.add_object, "Adicionar")
         self.act_title = make_action("Titulo.png", "Marcar como título", self.toggle_title, "Título")
         self.act_media = make_action("Midia.png", "Mídia", self.insert_media, "Mídia")
-        self.act_connect = make_action("Conectar.png", "Conectar", self.connect_nodes, "Conectar")
+        self.act_connect = make_action("Conectar.png", "Conectar ou desconectar", self.connect_nodes, "Conectar")
         
         # Botão ocultar/reexibir
         self.act_hide = make_action("Ocultar.png", "Ocultar ou reexibir objetos", self.toggle_hide_mode, "Ocultar")
@@ -1904,7 +1904,7 @@ class AmareloMainWindow(QMainWindow):
     def _show_connect_dialog(self, obj):
         """Exibe o diálogo de conectividade para um único objeto selecionado."""
         msg = QMessageBox(self)
-        msg.setWindowTitle("Conectar")
+        msg.setWindowTitle("Conectar ou desconectar")
         msg.setIcon(QMessageBox.Icon.Question)
         msg.setText("O que você deseja fazer?")
         btn_split = msg.addButton("Desmembrar mapa mental", QMessageBox.ButtonRole.AcceptRole)
