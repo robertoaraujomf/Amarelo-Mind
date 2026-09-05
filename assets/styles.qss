@@ -152,7 +152,7 @@ QPushButton {
         stop:0 {{PRIMARY}},
         stop:1 {{PRIMARY_DARK}}
     );
-    color: #ffffff;
+    color: {{BTN_TEXT}};
     border: 1px solid {{PRIMARY_LIGHT}};
     border-radius: 10px;
     padding: 12px 24px;
@@ -216,7 +216,7 @@ QListWidget::item {
 
 QListWidget::item:selected {
     background: {{PRIMARY}};
-    color: #ffffff;
+    color: {{BTN_TEXT}};
 }
 
 QListWidget::item:hover {
@@ -316,7 +316,7 @@ QTableWidget::item {
 
 QTableWidget::item:selected {
     background: {{PRIMARY}};
-    color: #ffffff;
+    color: {{BTN_TEXT}};
 }
 
 QHeaderView::section {
