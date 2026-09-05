@@ -112,6 +112,86 @@ THEMES = {
         "disabled": "#665566",
         "canvas_bg": "#1a1018",
     },
+    # ----------------------------------------------------
+    # VARIANTES CLARAS
+    # ----------------------------------------------------
+    "Padrão Claro": {
+        "primary": "#2d6a4f",
+        "primary_light": "#4c8a6e",
+        "primary_dark": "#1d5a3f",
+        "primary_darker": "#14603f",
+        "bg_main": "#f2f6f4",
+        "bg_toolbar": "#ffffff",
+        "border": "#c8d8cf",
+        "border_light": "#dce8e1",
+        "text": "#33443b",
+        "text_light": "#1a2b23",
+        "accent": "#2d6a4f",
+        "scrollbar": "#c8d8cf",
+        "scrollbar_hover": "#a8c4b2",
+        "disabled": "#88968e",
+        "canvas_bg": "#f2f6f4",
+    },
+    "Vinho Claro": {
+        "primary": "#661f41",
+        "primary_light": "#8a3561",
+        "primary_dark": "#4f1732",
+        "primary_darker": "#380f22",
+        "bg_main": "#fbf3f6",
+        "bg_toolbar": "#ffffff",
+        "border": "#e0c8d2",
+        "border_light": "#ecdce2",
+        "text": "#5a3441",
+        "text_light": "#3a1c2a",
+        "accent": "#b6436b",
+        "scrollbar": "#e0c8d2",
+        "scrollbar_hover": "#c8a6b6",
+        "disabled": "#916173",
+        "canvas_bg": "#fbf3f6",
+    },
+    "Azul-petróleo Claro": {
+        "primary": "#11799e",
+        "primary_light": "#3496bb",
+        "primary_dark": "#0d6080",
+        "primary_darker": "#084a60",
+        "bg_main": "#f1f7fa",
+        "bg_toolbar": "#ffffff",
+        "border": "#c0dce8",
+        "border_light": "#d6e8f0",
+        "text": "#245263",
+        "text_light": "#0f3140",
+        "accent": "#1688b0",
+        "scrollbar": "#c0dce8",
+        "scrollbar_hover": "#9cc4d6",
+        "disabled": "#6f8d99",
+        "canvas_bg": "#f1f7fa",
+    },
+    "Rosa Claro": {
+        "primary": "#a05e80",
+        "primary_light": "#c080a0",
+        "primary_dark": "#874a69",
+        "primary_darker": "#6e3853",
+        "bg_main": "#fbf4f8",
+        "bg_toolbar": "#ffffff",
+        "border": "#e4cfdb",
+        "border_light": "#efe0e8",
+        "text": "#6b3a55",
+        "text_light": "#4a2038",
+        "accent": "#c28ab0",
+        "scrollbar": "#e4cfdb",
+        "scrollbar_hover": "#ccb0c2",
+        "disabled": "#9c7890",
+        "canvas_bg": "#fbf4f8",
+    },
+}
+
+# Agrupa cada cor em suas variantes clara e escura.
+# Chave = nome do grupo (cor), valor = {escuro, claro} (chaves do dict THEMES).
+COLOR_GROUPS = {
+    "Padrão":         {"escuro": "Padrão",         "claro": "Padrão Claro"},
+    "Vinho":          {"escuro": "#661f41",        "claro": "Vinho Claro"},
+    "Azul-petróleo":  {"escuro": "#11799e",        "claro": "Azul-petróleo Claro"},
+    "Rosa":           {"escuro": "#dabbed",        "claro": "Rosa Claro"},
 }
 
 def generate_qss(theme):
@@ -883,8 +963,9 @@ class AmareloMainWindow(QMainWindow):
         # Alinhar ativo por padrão
         self.alinhar_ativo = True
         
-        # Tema atual
+        # Tema atual e modo claro/escuro
         self.current_theme_name = "Padrão"
+        self.dark_mode = True
 
         self.scene = QGraphicsScene(-100000, -100000, 200000, 200000)
         self.view = InfiniteCanvas(self.scene, self)
@@ -981,15 +1062,27 @@ class AmareloMainWindow(QMainWindow):
             try:
                 with open(theme_file, "r", encoding="utf-8") as f:
                     saved = json.load(f)
-                    self.current_theme_name = saved.get("theme", "Padrão")
+                    saved_theme = saved.get("theme", "Padrão")
+                    self.dark_mode = bool(saved.get("dark_mode", True))
+                    # Descobre o grupo de cor a partir do tema salvo
+                    for group, variants in COLOR_GROUPS.items():
+                        if saved_theme in variants.values():
+                            self.current_theme_name = variants["escuro" if self.dark_mode else "claro"]
+                            break
+                    else:
+                        self.current_theme_name = "Padrão"
             except Exception:
                 self.current_theme_name = "Padrão"
+                self.dark_mode = True
 
     def save_theme_to_file(self):
         theme_file = self._get_theme_file()
         try:
             with open(theme_file, "w", encoding="utf-8") as f:
-                json.dump({"theme": self.current_theme_name}, f, indent=2, ensure_ascii=False)
+                json.dump(
+                    {"theme": self.current_theme_name, "dark_mode": self.dark_mode},
+                    f, indent=2, ensure_ascii=False
+                )
         except Exception as e:
             print(f"Aviso: Não foi possível salvar tema: {e}")
 
@@ -1005,95 +1098,137 @@ class AmareloMainWindow(QMainWindow):
         self.view.setBackgroundBrush(QColor(canvas_bg))
         self.save_theme_to_file()
 
+    def apply_theme_group(self, group_name, dark_mode):
+        """Aplica a variante (clara ou escura) de um grupo de cores."""
+        variants = COLOR_GROUPS.get(group_name)
+        if variants is None:
+            return
+        self.dark_mode = bool(dark_mode)
+        self.apply_theme(variants["escuro" if self.dark_mode else "claro"])
+
     def show_themes_dialog(self):
         from PySide6.QtWidgets import (QDialog, QVBoxLayout, QHBoxLayout, QPushButton,
                                        QLabel, QButtonGroup, QRadioButton, QWidget)
         from PySide6.QtCore import Qt, QSize
         from PySide6.QtGui import QPixmap, QPainter, QColor
 
+        group_names = list(COLOR_GROUPS.keys())
+
         dialog = QDialog(self)
         dialog.setWindowTitle("Temas")
-        dialog.setMinimumWidth(380)
+        dialog.setMinimumWidth(400)
         layout = QVBoxLayout(dialog)
 
         label = QLabel("Escolha o tema do aplicativo:")
         layout.addWidget(label)
 
-        btn_group = QButtonGroup(dialog)
-        theme_names = list(THEMES.keys())
+        # ---------- Modo claro / escuro ----------
+        mode_label = QLabel("Modo de aparência:")
+        layout.addWidget(mode_label)
 
-        THEME_LABELS = {
-            "Padrão": "Verde",
-            "#661f41": "Vinho",
-            "#11799e": "Azul-petróleo",
-            "#dabbed": "Rosa",
-        }
+        mode_group = QButtonGroup(dialog)
+        mode_layout = QHBoxLayout()
+        rb_dark = QRadioButton("Escuro")
+        rb_light = QRadioButton("Claro")
+        for rb in (rb_dark, rb_light):
+            rb.setStyleSheet("font-size: 14px;")
+            mode_layout.addWidget(rb)
+        mode_layout.addStretch()
+        layout.addLayout(mode_layout)
+        mode_group.addButton(rb_dark, 0)
+        mode_group.addButton(rb_light, 1)
+        (rb_dark if self.dark_mode else rb_light).setChecked(True)
 
-        for i, name in enumerate(theme_names):
-            t = THEMES[name]
+        # ---------- Cores ----------
+        color_group = QButtonGroup(dialog)
+        swatches = {}
+        radios = {}
+
+        label = QLabel("Cor de destaque:")
+        layout.addWidget(label)
+
+        for idx, group in enumerate(group_names):
             row = QHBoxLayout()
 
             swatch = QLabel()
             swatch.setFixedSize(48, 48)
-            pix = QPixmap(48, 48)
-            pix.fill(Qt.transparent)
-            p = QPainter(pix)
-            p.setRenderHint(QPainter.Antialiasing)
-            p.setBrush(QColor(t["primary"]))
-            p.setPen(Qt.NoPen)
-            p.drawRoundedRect(0, 0, 48, 48, 8, 8)
-            p.setBrush(QColor(t["accent"]))
-            p.drawRoundedRect(4, 32, 40, 12, 4, 4)
-            p.end()
-            swatch.setPixmap(pix)
-
-            display_name = THEME_LABELS.get(name, name)
-            rb = QRadioButton(display_name)
-            if name == self.current_theme_name:
-                rb.setChecked(True)
-            rb.setStyleSheet("font-size: 14px;")
-
+            swatches[group] = swatch
             row.addWidget(swatch)
+
+            rb = QRadioButton(group)
+            rb.setStyleSheet("font-size: 14px;")
+            radios[group] = rb
             row.addWidget(rb)
             row.addStretch()
             layout.addLayout(row)
-            btn_group.addButton(rb, i)
 
-        theme = THEMES.get(self.current_theme_name, THEMES["Padrão"])
+            color_group.addButton(rb, idx)
+
+        def _theme_variant(group, dark_mode):
+            variants = COLOR_GROUPS[group]
+            return THEMES[variants["escuro" if dark_mode else "claro"]]
+
+        def _update_swatches(dark_mode):
+            for group in group_names:
+                t = _theme_variant(group, dark_mode)
+                pix = QPixmap(48, 48)
+                pix.fill(Qt.transparent)
+                p = QPainter(pix)
+                p.setRenderHint(QPainter.Antialiasing)
+                p.setBrush(QColor(t["primary"]))
+                p.setPen(Qt.NoPen)
+                p.drawRoundedRect(0, 0, 48, 48, 8, 8)
+                p.setBrush(QColor(t["accent"]))
+                p.drawRoundedRect(4, 32, 40, 12, 4, 4)
+                p.end()
+                swatches[group].setPixmap(pix)
+
+        def _current_group():
+            idx = color_group.checkedId()
+            return group_names[idx] if 0 <= idx < len(group_names) else group_names[0]
+
+        # Marcar a cor atual selecionada
+        current_group = next(
+            (g for g, v in COLOR_GROUPS.items() if self.current_theme_name in v.values()),
+            group_names[0]
+        )
+        radios[current_group].setChecked(True)
+
         preview = QPushButton()
         preview.setEnabled(False)
         preview.setFixedHeight(44)
-        preview.setStyleSheet(
-            f"background: qlineargradient(x1:0,y1:0,x2:1,y2:0,"
-            f"stop:0 {theme['primary']}, stop:1 {theme['primary_dark']});"
-            f"color: {theme['accent']}; border: 1px solid {theme['primary_light']};"
-            f"border-radius: 10px; font-size: 13px; font-weight: 600;"
-        )
-        preview.setText(THEME_LABELS.get(self.current_theme_name, self.current_theme_name))
         layout.addWidget(preview)
 
-        def on_theme_selected(idx):
-            selected_name = theme_names[idx]
-            t = THEMES[selected_name]
-            lbl = THEME_LABELS.get(selected_name, selected_name)
-            preview.setText(lbl)
+        def _update_preview():
+            group = _current_group()
+            t = _theme_variant(group, mode_group.checkedId() == 1)
             preview.setStyleSheet(
                 f"background: qlineargradient(x1:0,y1:0,x2:1,y2:0,"
                 f"stop:0 {t['primary']}, stop:1 {t['primary_dark']});"
-                f"color: {t['accent']}; border: 1px solid {t['primary_light']};"
+                f"color: {t['text_light']}; border: 1px solid {t['primary_light']};"
                 f"border-radius: 10px; font-size: 13px; font-weight: 600;"
             )
+            preview.setText(group)
 
-        btn_group.idClicked.connect(on_theme_selected)
+        def _on_mode_changed(dark_mode):
+            _update_swatches(mode_group.checkedId() == 1)
+            _update_preview()
+
+        def _on_color_changed():
+            _update_preview()
+
+        mode_group.idClicked.connect(_on_mode_changed)
+        color_group.idClicked.connect(_on_color_changed)
+
+        _update_swatches(self.dark_mode)
+        _update_preview()
 
         btn_layout = QHBoxLayout()
         apply_btn = QPushButton("Aplicar")
         cancel_btn = QPushButton("Fechar")
 
         def apply_selected():
-            idx = btn_group.checkedId()
-            if idx >= 0:
-                self.apply_theme(theme_names[idx])
+            self.apply_theme_group(_current_group(), mode_group.checkedId() == 1)
             dialog.accept()
 
         apply_btn.clicked.connect(apply_selected)
@@ -1950,13 +2085,75 @@ class AmareloMainWindow(QMainWindow):
                 conns_boundary.append(item)
         return descendants, conns_both, conns_boundary
 
+    def _get_loose_nodes(self):
+        """Retorna objetos que não possuem NENHUMA conexão (nem origem nem destino)."""
+        connected = set()
+        for item in self.scene.items():
+            if isinstance(item, SmartConnection):
+                connected.add(item.source)
+                connected.add(item.target)
+        loose = []
+        for item in self.scene.items():
+            if isinstance(item, (StyledNode, MediaItem)) and item not in connected:
+                loose.append(item)
+        return loose
+
+    def _locate_node(self, item):
+        """Centraliza e dá zoom sobre um objeto (efeito semelhante ao Localizar)."""
+        self.scene.clearSelection()
+        self.view.resetTransform()
+        self.view.scale(1.0, 1.0)
+        self.view.centerOn(item)
+        self.view.ensureVisible(item)
+        item.setSelected(True)
+        item.setZValue(1000)
+        QTimer.singleShot(2000, lambda: item.setZValue(0))
+
+    def _prompt_loose_nodes(self, loose):
+        """Avisa sobre objetos soltos e permite navegar até cada um deles.
+
+        Enquanto houver objetos soltos, o desmembramento fica bloqueado.
+        O usuário pode percorrê-los com zoom (efeito Localizar) até que
+        todos estejam conectados/removidos.
+        """
+        idx = getattr(self, "_loose_nav_index", 0)
+        if idx >= len(loose):
+            idx = 0
+        target = loose[idx]
+        self._loose_nav_index = idx + 1
+
+        msg = QMessageBox(self)
+        msg.setWindowTitle("Objetos sem conexão")
+        msg.setIcon(QMessageBox.Icon.Warning)
+        msg.setText("Há objetos que não estão conectados a nenhum outro.")
+        msg.setInformativeText(
+            f"{len(loose)} objeto(s) solto(s) detectado(s).\n"
+            "Desmembrar o mapa mental agora poderá comprometer sua integridade.\n"
+            "Conecte ou remova os objetos soltos antes de continuar."
+        )
+        btn_locate = msg.addButton("Localizar objeto solto", QMessageBox.ButtonRole.AcceptRole)
+        btn_cancel = msg.addButton("Cancelar", QMessageBox.ButtonRole.RejectRole)
+        msg.exec()
+        clicked = msg.clickedButton()
+        if clicked == btn_locate:
+            self._locate_node(target)
+
     def _split_mindmap(self, obj):
         """Desmembra o mapa a partir do objeto selecionado.
 
         O objeto selecionado vira o TÍTULO de um novo mapa (nova janela),
         junto com toda a sua sub-árvore posterior (source→target). Os objetos
         que levavam até ele permanecem no mapa atual.
+
+        Antes de desmembrar, verifica se há objetos soltos (sem nenhuma
+        conexão). Se existirem, o desmembramento é bloqueado e o usuário
+        pode localizá-los na tela (com zoom) até conectar/remover todos.
         """
+        loose = self._get_loose_nodes()
+        if loose:
+            self._prompt_loose_nodes(loose)
+            return
+
         descendants, conns_both, conns_boundary = self._get_posterior_subgraph(obj)
         
         if not descendants:
@@ -2644,8 +2841,11 @@ class AmareloMainWindow(QMainWindow):
         
         shortcut_edits = {}
         
+        display_names = {
+            "Conectar": "Conectar ou desconectar",
+        }
         for i, name in enumerate(all_buttons):
-            table.setItem(i, 0, QTableWidgetItem(name))
+            table.setItem(i, 0, QTableWidgetItem(display_names.get(name, name)))
             
             shortcut_edit = QLineEdit()
             shortcut_edit.setReadOnly(True)
