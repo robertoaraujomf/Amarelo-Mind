@@ -116,10 +116,10 @@ THEMES = {
     # VARIANTES CLARAS
     # ----------------------------------------------------
     "Padrão Claro": {
-        "primary": "#66bb8f",
-        "primary_light": "#8fd3ae",
-        "primary_dark": "#4aa374",
-        "primary_darker": "#378a5f",
+        "primary": "#3d7056",
+        "primary_light": "#567f68",
+        "primary_dark": "#2c6246",
+        "primary_darker": "#215339",
         "bg_main": "#eef7f2",
         "bg_toolbar": "#ffffff",
         "border": "#b8d9c8",
@@ -134,10 +134,10 @@ THEMES = {
         "btn_text": "#123527",
     },
     "Vinho Claro": {
-        "primary": "#d489a9",
-        "primary_light": "#e0a7c0",
-        "primary_dark": "#bd6a90",
-        "primary_darker": "#a5547c",
+        "primary": "#7f5265",
+        "primary_light": "#866473",
+        "primary_dark": "#714056",
+        "primary_darker": "#63324a",
         "bg_main": "#f9f1f4",
         "bg_toolbar": "#ffffff",
         "border": "#e3c9d4",
@@ -151,11 +151,11 @@ THEMES = {
         "canvas_bg": "#f9f1f4",
         "btn_text": "#3a0f22",
     },
-    "Azul-petróleo Claro": {
-        "primary": "#5fbee0",
-        "primary_light": "#86d0ea",
-        "primary_dark": "#3aa6cd",
-        "primary_darker": "#2c8eb0",
+    "Azul Claro": {
+        "primary": "#397286",
+        "primary_light": "#507d8c",
+        "primary_dark": "#23647b",
+        "primary_darker": "#1a556a",
         "bg_main": "#eef8fb",
         "bg_toolbar": "#ffffff",
         "border": "#bcdce8",
@@ -170,10 +170,10 @@ THEMES = {
         "btn_text": "#08404f",
     },
     "Rosa Claro": {
-        "primary": "#d6a5c2",
-        "primary_light": "#e4bdd5",
-        "primary_dark": "#c085a8",
-        "primary_darker": "#a96b90",
+        "primary": "#806374",
+        "primary_light": "#897180",
+        "primary_dark": "#735065",
+        "primary_darker": "#654056",
         "bg_main": "#f9f2f6",
         "bg_toolbar": "#ffffff",
         "border": "#e6d2de",
@@ -194,7 +194,7 @@ THEMES = {
 COLOR_GROUPS = {
     "Padrão":         {"escuro": "Padrão",         "claro": "Padrão Claro"},
     "Vinho":          {"escuro": "#661f41",        "claro": "Vinho Claro"},
-    "Azul-petróleo":  {"escuro": "#11799e",        "claro": "Azul-petróleo Claro"},
+    "Azul":           {"escuro": "#11799e",         "claro": "Azul Claro"},
     "Rosa":           {"escuro": "#dabbed",        "claro": "Rosa Claro"},
 }
 
@@ -1069,6 +1069,11 @@ class AmareloMainWindow(QMainWindow):
                     saved = json.load(f)
                     saved_theme = saved.get("theme", "Padrão")
                     self.dark_mode = bool(saved.get("dark_mode", True))
+                    # Migração: legenda antiga "Azul-petróleo" renomeada para "Azul"
+                    saved_theme = {
+                        "Azul-petróleo": "Azul",
+                        "Azul-petróleo Claro": "Azul Claro",
+                    }.get(saved_theme, saved_theme)
                     # Descobre o grupo de cor a partir do tema salvo
                     for group, variants in COLOR_GROUPS.items():
                         if saved_theme in variants.values():
