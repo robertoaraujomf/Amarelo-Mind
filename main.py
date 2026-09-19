@@ -44,69 +44,69 @@ import urllib.request
 # TEMAS
 # ======================================================
 THEMES = {
-    "Padrão": {
-        "primary": "#2d6a4f",
-        "primary_light": "#3d7a5f",
-        "primary_dark": "#1d5a3f",
-        "primary_darker": "#0d4a2f",
+    "Verde": {
+        "primary": "#17572b",
+        "primary_light": "#1d6d36",
+        "primary_dark": "#124622",
+        "primary_darker": "#0e361b",
         "bg_main": "#0f1621",
         "bg_toolbar": "#1a2332",
         "border": "#2d3a4f",
         "border_light": "#3d4a5f",
         "text": "#c0c8d8",
         "text_light": "#f0f6fc",
-        "accent": "#90EE90",
+        "accent": "#85f289",
         "scrollbar": "#2d3a4f",
         "scrollbar_hover": "#4d5a6f",
         "disabled": "#666666",
         "canvas_bg": "#0f1621",
     },
-    "#661f41": {
-        "primary": "#661f41",
-        "primary_light": "#7d2a52",
-        "primary_dark": "#4f1732",
-        "primary_darker": "#3a0f25",
+    "Vermelho": {
+        "primary": "#bf0020",
+        "primary_light": "#ef0028",
+        "primary_dark": "#99001a",
+        "primary_darker": "#770014",
         "bg_main": "#1a0e14",
         "bg_toolbar": "#23141c",
         "border": "#3a2030",
         "border_light": "#4a3040",
         "text": "#d8c0c8",
         "text_light": "#fcf0f4",
-        "accent": "#FFB6C1",
+        "accent": "#fc655d",
         "scrollbar": "#3a2030",
         "scrollbar_hover": "#5a4050",
         "disabled": "#665555",
         "canvas_bg": "#1a0e14",
     },
-    "#11799e": {
-        "primary": "#11799e",
-        "primary_light": "#1a8fb8",
-        "primary_dark": "#0d6080",
-        "primary_darker": "#084a60",
+    "Azul": {
+        "primary": "#140d94",
+        "primary_light": "#1910b9",
+        "primary_dark": "#100a76",
+        "primary_darker": "#0c085c",
         "bg_main": "#0a1a22",
         "bg_toolbar": "#0f2530",
         "border": "#1a4050",
         "border_light": "#2a5565",
         "text": "#b0d8e8",
         "text_light": "#e0f4fc",
-        "accent": "#70d0f0",
+        "accent": "#8dbafc",
         "scrollbar": "#1a4050",
         "scrollbar_hover": "#2a5565",
         "disabled": "#4a6a7a",
         "canvas_bg": "#0a1a22",
     },
-    "#dabbed": {
-        "primary": "#b07090",
-        "primary_light": "#c080a0",
-        "primary_dark": "#9a6080",
-        "primary_darker": "#805068",
+    "Rosa": {
+        "primary": "#b80093",
+        "primary_light": "#e600b8",
+        "primary_dark": "#930076",
+        "primary_darker": "#73005c",
         "bg_main": "#1a1018",
         "bg_toolbar": "#231820",
         "border": "#382535",
         "border_light": "#483545",
         "text": "#d8c0d0",
         "text_light": "#fcf0f8",
-        "accent": "#dabbed",
+        "accent": "#f5b5ef",
         "scrollbar": "#382535",
         "scrollbar_hover": "#584555",
         "disabled": "#665566",
@@ -115,87 +115,87 @@ THEMES = {
     # ----------------------------------------------------
     # VARIANTES CLARAS
     # ----------------------------------------------------
-    "Padrão Claro": {
-        "primary": "#050806",
-        "primary_light": "#060a08",
-        "primary_dark": "#030705",
-        "primary_darker": "#020604",
+    "Verde Claro": {
+        "primary": "#85f289",
+        "primary_light": "#bcffbe",
+        "primary_dark": "#6ac26e",
+        "primary_darker": "#539756",
         "bg_main": "#222322",
         "bg_toolbar": "#222322",
         "border": "#1a1f1c",
         "border_light": "#1e211f",
         "text": "#c0c8d8",
         "text_light": "#f0f6fc",
-        "accent": "#90ee90",
+        "accent": "#17572b",
         "scrollbar": "#1a1f1c",
         "scrollbar_hover": "#161c19",
         "disabled": "#131514",
         "canvas_bg": "#222322",
-        "btn_text": "#ffffff",
+        "btn_text": "#2c512e",
     },
-    "Vinho Claro": {
-        "primary": "#0a0608",
-        "primary_light": "#0a0809",
-        "primary_dark": "#080506",
-        "primary_darker": "#070406",
+    "Vermelho Claro": {
+        "primary": "#fc655d",
+        "primary_light": "#ff9f9a",
+        "primary_dark": "#ca514a",
+        "primary_darker": "#9d3f3a",
         "bg_main": "#232222",
         "bg_toolbar": "#232223",
         "border": "#201c1e",
         "border_light": "#221f20",
         "text": "#d8c0c8",
         "text_light": "#fcf0f4",
-        "accent": "#ffb6c1",
+        "accent": "#bf0020",
         "scrollbar": "#201c1e",
         "scrollbar_hover": "#1e191a",
         "disabled": "#140e10",
         "canvas_bg": "#232222",
-        "btn_text": "#ffffff",
+        "btn_text": "#54221f",
     },
     "Azul Claro": {
-        "primary": "#04090a",
-        "primary_light": "#06090a",
-        "primary_dark": "#030809",
-        "primary_darker": "#020608",
+        "primary": "#8dbafc",
+        "primary_light": "#cbe0ff",
+        "primary_dark": "#7195ca",
+        "primary_darker": "#58749d",
         "bg_main": "#222324",
         "bg_toolbar": "#222323",
         "border": "#1b1f21",
         "border_light": "#1e2122",
         "text": "#b0d8e8",
         "text_light": "#e0f4fc",
-        "accent": "#70d0f0",
+        "accent": "#140d94",
         "scrollbar": "#1b1f21",
         "scrollbar_hover": "#161c1e",
         "disabled": "#101416",
         "canvas_bg": "#222324",
-        "btn_text": "#ffffff",
+        "btn_text": "#2f3e54",
     },
     "Rosa Claro": {
-        "primary": "#0a0709",
-        "primary_light": "#0a080a",
-        "primary_dark": "#090608",
-        "primary_darker": "#080506",
+        "primary": "#f5b5ef",
+        "primary_light": "#fff0fe",
+        "primary_dark": "#c491bf",
+        "primary_darker": "#997195",
         "bg_main": "#232223",
         "bg_toolbar": "#232323",
         "border": "#211e20",
         "border_light": "#222021",
         "text": "#d8c0d0",
         "text_light": "#fcf0f8",
-        "accent": "#dabbed",
+        "accent": "#b80093",
         "scrollbar": "#211e20",
         "scrollbar_hover": "#1e1a1c",
         "disabled": "#161114",
         "canvas_bg": "#232223",
-        "btn_text": "#ffffff",
+        "btn_text": "#523c50",
     },
 }
 
 # Agrupa cada cor em suas variantes clara e escura.
 # Chave = nome do grupo (cor), valor = {escuro, claro} (chaves do dict THEMES).
 COLOR_GROUPS = {
-    "Padrão":         {"escuro": "Padrão",         "claro": "Padrão Claro"},
-    "Vinho":          {"escuro": "#661f41",        "claro": "Vinho Claro"},
-    "Azul":           {"escuro": "#11799e",         "claro": "Azul Claro"},
-    "Rosa":           {"escuro": "#dabbed",        "claro": "Rosa Claro"},
+    "Verde":     {"escuro": "Verde",     "claro": "Verde Claro"},
+    "Vermelho":  {"escuro": "Vermelho",  "claro": "Vermelho Claro"},
+    "Azul":      {"escuro": "Azul",      "claro": "Azul Claro"},
+    "Rosa":      {"escuro": "Rosa",      "claro": "Rosa Claro"},
 }
 
 def generate_qss(theme):
@@ -969,7 +969,7 @@ class AmareloMainWindow(QMainWindow):
         self.alinhar_ativo = True
         
         # Tema atual e modo claro/escuro
-        self.current_theme_name = "Padrão"
+        self.current_theme_name = "Verde"
         self.dark_mode = True
 
         self.scene = QGraphicsScene(-100000, -100000, 200000, 200000)
@@ -1049,7 +1049,7 @@ class AmareloMainWindow(QMainWindow):
     # --------------------------------------------------
     def load_styles(self):
         self.load_theme_from_file()
-        theme = THEMES.get(self.current_theme_name, THEMES["Padrão"])
+        theme = THEMES.get(self.current_theme_name, THEMES["Verde"])
         qss = generate_qss(theme)
         if qss:
             self.setStyleSheet(qss)
@@ -1069,10 +1069,18 @@ class AmareloMainWindow(QMainWindow):
                     saved = json.load(f)
                     saved_theme = saved.get("theme", "Padrão")
                     self.dark_mode = bool(saved.get("dark_mode", True))
-                    # Migração: legenda antiga "Azul-petróleo" renomeada para "Azul"
+                    # Migração de nomes antigos (Padrão/Vinho/Azul-petróleo/hex) para
+                    # o novo conjunto de cores de destaque (Verde/Vermelho/Azul/Rosa)
                     saved_theme = {
+                        "Padrão": "Verde",
+                        "Padrão Claro": "Verde Claro",
+                        "#661f41": "Vermelho",
+                        "Vinho": "Vermelho",
+                        "Vinho Claro": "Vermelho Claro",
+                        "#11799e": "Azul",
                         "Azul-petróleo": "Azul",
                         "Azul-petróleo Claro": "Azul Claro",
+                        "#dabbed": "Rosa",
                     }.get(saved_theme, saved_theme)
                     # Descobre o grupo de cor a partir do tema salvo
                     for group, variants in COLOR_GROUPS.items():
@@ -1080,9 +1088,9 @@ class AmareloMainWindow(QMainWindow):
                             self.current_theme_name = variants["escuro" if self.dark_mode else "claro"]
                             break
                     else:
-                        self.current_theme_name = "Padrão"
+                        self.current_theme_name = "Verde"
             except Exception:
-                self.current_theme_name = "Padrão"
+                self.current_theme_name = "Verde"
                 self.dark_mode = True
 
     def save_theme_to_file(self):
