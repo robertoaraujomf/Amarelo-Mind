@@ -1192,6 +1192,9 @@ class AmareloMainWindow(QMainWindow):
             idx = color_group.checkedId()
             return group_names[idx] if 0 <= idx < len(group_names) else group_names[0]
 
+        def _is_dark():
+            return mode_group.checkedId() == 0
+
         # Marcar a cor atual selecionada
         current_group = next(
             (g for g, v in COLOR_GROUPS.items() if self.current_theme_name in v.values()),
@@ -1206,7 +1209,7 @@ class AmareloMainWindow(QMainWindow):
 
         def _update_preview():
             group = _current_group()
-            t = _theme_variant(group, mode_group.checkedId() == 1)
+            t = _theme_variant(group, _is_dark())
             preview.setStyleSheet(
                 f"background: qlineargradient(x1:0,y1:0,x2:1,y2:0,"
                 f"stop:0 {t['primary']}, stop:1 {t['primary_dark']});"
@@ -1216,7 +1219,7 @@ class AmareloMainWindow(QMainWindow):
             preview.setText(group)
 
         def _on_mode_changed(dark_mode):
-            _update_swatches(mode_group.checkedId() == 1)
+            _update_swatches(_is_dark())
             _update_preview()
 
         def _on_color_changed():
@@ -1233,7 +1236,7 @@ class AmareloMainWindow(QMainWindow):
         cancel_btn = QPushButton("Fechar")
 
         def apply_selected():
-            self.apply_theme_group(_current_group(), mode_group.checkedId() == 1)
+            self.apply_theme_group(_current_group(), _is_dark())
             dialog.accept()
 
         apply_btn.clicked.connect(apply_selected)
