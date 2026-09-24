@@ -556,6 +556,7 @@ class InfiniteCanvas(QGraphicsView):
         # essencial para seleção retangular
         self.setRubberBandSelectionMode(Qt.IntersectsItemShape)
 
+        self.main_window = parent
         self._panning = False
         self._last_pos = None
         self.undo_stack = None
@@ -616,7 +617,9 @@ class InfiniteCanvas(QGraphicsView):
 
     def keyPressEvent(self, event):
         """Movimento com setas (10 px) para itens selecionados ou pan da tela.
-        Durante edição de texto de um nó, as teclas vão para o editor."""
+        Durante edição de texto de um nó, as teclas vão para o editor.
+        No modo de seleção de exportação (Desmembrar -> Alterar),
+        Enter conclui a exportação e Esc cancela."""
         focus_item = self.scene().focusItem()
         if isinstance(focus_item, QGraphicsTextItem) and \
            (focus_item.textInteractionFlags() & Qt.TextEditable):
@@ -624,6 +627,20 @@ class InfiniteCanvas(QGraphicsView):
             return
 
         key = event.key()
+
+        # Modo de seleção de exportação
+        if getattr(self.main_window, 'export_selection_mode', False):
+            if key in (Qt.Key_Return, Qt.Key_Enter):
+                if hasattr(self.main_window, 'finish_export_selection'):
+                    self.main_window.finish_export_selection()
+                event.accept()
+                return
+            if key == Qt.Key_Escape:
+                if hasattr(self.main_window, 'cancel_export_selection'):
+                    self.main_window.cancel_export_selection()
+                event.accept()
+                return
+
         if key not in (Qt.Key_Left, Qt.Key_Right, Qt.Key_Up, Qt.Key_Down):
             super().keyPressEvent(event)
             return
@@ -695,6 +712,10 @@ class InfiniteCanvas(QGraphicsView):
         
         # BOTÃO DIREITO: Seleção retangular
         if event.button() == Qt.RightButton:
+            # No modo de exportação, o clique direito não altera a seleção
+            if getattr(self.main_window, 'export_selection_mode', False):
+                event.accept()
+                return
             # Inicia seleção retangular com o botão direito
             self.setDragMode(QGraphicsView.RubberBandDrag)
             super().mousePressEvent(event)
@@ -715,17 +736,27 @@ class InfiniteCanvas(QGraphicsView):
                 if parent_node:
                     item_clicked = parent_node
                 
+                export_mode = bool(getattr(self.main_window, 'export_selection_mode', False))
+                
                 # Se Ctrl está pressionado, alternar seleção (adicionar/remover)
                 if event.modifiers() & Qt.ControlModifier:
                     if item_clicked.isSelected():
                         item_clicked.setSelected(False)
                     else:
                         item_clicked.setSelected(True)
+                elif export_mode:
+                    # Modo de exportação: clicar ADICIONA à seleção (não limpa)
+                    item_clicked.setSelected(True)
                 else:
                     # Se não está selecionado, deseleciona outros
                     if not item_clicked.isSelected():
                         self.scene().clearSelection()
                         item_clicked.setSelected(True)
+                
+                # No modo de exportação, apenas seleciona (não arrasta objetos)
+                if export_mode:
+                    event.accept()
+                    return
                 
                 # Registra a posição original para TODOS os itens selecionados
                 self._item_positions.clear()
@@ -745,6 +776,11 @@ class InfiniteCanvas(QGraphicsView):
                 self._panning = True
                 self._last_pos = event.position().toPoint()
                 self.setCursor(Qt.ClosedHandCursor)
+                return
+            
+            # No modo de exportação, clicar no vazio NÃO deseleciona
+            if getattr(self.main_window, 'export_selection_mode', False):
+                event.accept()
                 return
             
             # Se há seleção mas clicou no vazio, deseleciona
@@ -960,6 +996,10 @@ class AmareloMainWindow(QMainWindow):
         # Hide mode - controlled by button
         self.hide_mode_active = False
         self.hide_mode_hidden_items = []
+        
+        # Modo de seleção de exportação (Desmembrar -> Alterar)
+        self.export_selection_mode = False
+        self._pending_export_root = None
         
         # Conectar sinais para detectar mudanças
         self.undo_stack.indexChanged.connect(self._on_undo_stack_changed)
@@ -2063,12 +2103,15 @@ class AmareloMainWindow(QMainWindow):
         msg.setWindowTitle("Conectar ou desconectar")
         msg.setIcon(QMessageBox.Icon.Question)
         msg.setText("O que você deseja fazer?")
+        btn_add = msg.addButton("Adicionar objeto", QMessageBox.ButtonRole.ActionRole)
         btn_split = msg.addButton("Desmembrar mapa mental", QMessageBox.ButtonRole.AcceptRole)
         btn_merge = msg.addButton("Conectar a outro mapa mental", QMessageBox.ButtonRole.AcceptRole)
         btn_cancel = msg.addButton("Cancelar", QMessageBox.ButtonRole.RejectRole)
         msg.exec()
         clicked = msg.clickedButton()
-        if clicked == btn_split:
+        if clicked == btn_add:
+            self.add_object()
+        elif clicked == btn_split:
             self._split_mindmap(obj)
         elif clicked == btn_merge:
             self._connect_to_other_mindmap(obj)
@@ -2169,6 +2212,10 @@ class AmareloMainWindow(QMainWindow):
         Antes de desmembrar, verifica se há objetos soltos (sem nenhuma
         conexão). Se existirem, o desmembramento é bloqueado e o usuário
         pode localizá-los na tela (com zoom) até conectar/remover todos.
+
+        Em seguida, exibe uma prévia de como o mapa mental será exportado,
+        com os botões OK (exporta imediatamente) e Alterar (permite ao
+        usuário incluir manualmente mais objetos antes de exportar).
         """
         loose = self._get_loose_nodes()
         if loose:
@@ -2184,30 +2231,152 @@ class AmareloMainWindow(QMainWindow):
             )
             return
         
-        remove_set = [obj] + sorted(descendants, key=id)
-        
-        # Criar a nova janela e transferir o subgrafo via comando undoável
+        planned = [obj] + sorted(descendants, key=id)
+        self._show_export_preview(obj, planned, conns_both, conns_boundary)
+
+    def _show_export_preview(self, root, planned, conns_both, conns_boundary):
+        """Exibe a prévia de como o mapa mental será exportado.
+
+        Oferece dois botões:
+        - OK: exporta imediatamente, tal como antes.
+        - Alterar: retorna ao mapa, seleciona os objetos previstos e deixa
+          o usuário adicionar mais objetos com um clique; Enter conclui.
+        """
+        dlg = QDialog(self)
+        dlg.setWindowTitle("Prévia do desmembramento")
+        dlg.setMinimumWidth(440)
+        layout = QVBoxLayout(dlg)
+        layout.addWidget(QLabel(
+            f"Este mapa mental será desmembrado em uma nova janela "
+            f"com {len(planned)} objeto(s):"
+        ))
+        list_widget = QListWidget()
+        for item in planned:
+            list_widget.addItem(self._export_preview_label(item))
+        list_widget.setSelectionMode(QListWidget.SelectionMode.NoSelection)
+        layout.addWidget(list_widget)
+        buttons = QHBoxLayout()
+        btn_alt = QPushButton("Alterar")
+        btn_ok = QPushButton("OK")
+        buttons.addWidget(btn_alt)
+        buttons.addWidget(btn_ok)
+        layout.addLayout(buttons)
+        btn_ok.setDefault(True)
+        btn_ok.clicked.connect(dlg.accept)
+        btn_alt.clicked.connect(dlg.reject)
+        if dlg.exec() == QDialog.DialogCode.Accepted:
+            self._perform_split(root, planned, conns_both, conns_boundary)
+        else:
+            self._enter_export_selection_mode(root, planned)
+
+    def _export_preview_label(self, item):
+        """Gera um rótulo textual do objeto para a prévia de exportação."""
+        if isinstance(item, StyledNode):
+            text = (item.get_text() or "").strip().replace("\n", " ")
+            return text if text else "(sem texto)"
+        source = getattr(item, "source", None)
+        if source:
+            return os.path.basename(str(source))
+        entries = getattr(item, "_entries", None)
+        if entries:
+            parts = []
+            for e in entries[:3]:
+                t = e.get("text") if isinstance(e, dict) else None
+                if t:
+                    parts.append(str(t))
+            if parts:
+                return " | ".join(parts)
+        return type(item).__name__
+
+    def _perform_split(self, root, nodes, conns_both, conns_boundary):
+        """Cria a nova janela e transfere o subgrafo via comando undoável."""
         new_win = AmareloMainWindow()
         if not hasattr(self, "_opened_windows"):
             self._opened_windows = []
         self._opened_windows.append(new_win)
         cmd = SplitMapCommand(
             self.scene, new_win.scene, new_win,
-            remove_set, conns_both, conns_boundary, obj
+            nodes, conns_both, conns_boundary, root
         )
         self.undo_stack.push(cmd)
         
         new_win._connect_text_signals()
         new_win.scene.clearSelection()
-        obj.setSelected(True)
+        root.setSelected(True)
         new_win.update_button_states()
         new_win.show()
-        new_win.view.centerOn(obj)
+        new_win.view.centerOn(root)
         
         self.update_button_states()
         # Alteração estrutural recente: garante persistência imediata
         if self.autosave_enabled and self.current_file:
             self._autosave()
+
+    def _enter_export_selection_mode(self, root, planned):
+        """Ativa o modo de seleção para exportação (botão Alterar).
+
+        Todos os objetos previstos são selecionados (handles visíveis). O
+        usuário pode adicionar mais objetos clicando neles com o botão
+        esquerdo do mouse; Enter exporta e Esc cancela.
+        """
+        self.export_selection_mode = True
+        self._pending_export_root = root
+        self.scene.clearSelection()
+        for item in planned:
+            item.setSelected(True)
+        self.statusBar().showMessage(
+            "Exportação: clique nos objetos para incluir na seleção "
+            "e pressione Enter para concluir (Esc cancela).",
+            8000
+        )
+        self.view.setFocus()
+
+    def finish_export_selection(self):
+        """Exporta (desmembra) o mapa com base na seleção atual.
+
+        Chamado quando o usuário pressiona Enter no modo de seleção de
+        exportação. Os objetos selecionados são transferidos para uma nova
+        janela e removidos do mapa atual.
+        """
+        root = self._pending_export_root
+        self.export_selection_mode = False
+        self._pending_export_root = None
+
+        sel = [i for i in self.scene.selectedItems() if isinstance(i, (StyledNode, MediaItem))]
+        if not sel:
+            self.statusBar().showMessage("Nenhum objeto selecionado. Desmembramento cancelado.", 5000)
+            return
+
+        if root in sel:
+            nodes = [root] + sorted((i for i in sel if i is not root), key=id)
+        else:
+            nodes = sorted(sel, key=id)
+            if root is None:
+                root = nodes[0]
+
+        export_set = set(nodes)
+        conns_both = []
+        conns_boundary = []
+        for item in self.scene.items():
+            if not isinstance(item, SmartConnection):
+                continue
+            in_src = item.source in export_set
+            in_tgt = item.target in export_set
+            if in_src and in_tgt:
+                conns_both.append(item)
+            elif in_src or in_tgt:
+                conns_boundary.append(item)
+
+        self.scene.clearSelection()
+        self._perform_split(root, nodes, conns_both, conns_boundary)
+        self.statusBar().showMessage("Mapa mental exportado e removido do mapa atual.", 5000)
+
+    def cancel_export_selection(self):
+        """Cancela o modo de seleção de exportação (tecla Esc)."""
+        self.export_selection_mode = False
+        self._pending_export_root = None
+        self.scene.clearSelection()
+        self.statusBar().showMessage("Desmembramento cancelado.", 5000)
 
     def _connect_to_other_mindmap(self, obj):
         """Conecta o objeto selecionado ao título de outro arquivo de mapa mental."""
