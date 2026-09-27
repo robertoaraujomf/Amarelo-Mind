@@ -617,9 +617,7 @@ class InfiniteCanvas(QGraphicsView):
 
     def keyPressEvent(self, event):
         """Movimento com setas (10 px) para itens selecionados ou pan da tela.
-        Durante edição de texto de um nó, as teclas vão para o editor.
-        No modo de seleção de exportação (Desmembrar -> Alterar),
-        Enter conclui a exportação e Esc cancela."""
+        Durante edição de texto de um nó, as teclas vão para o editor."""
         focus_item = self.scene().focusItem()
         if isinstance(focus_item, QGraphicsTextItem) and \
            (focus_item.textInteractionFlags() & Qt.TextEditable):
@@ -627,19 +625,6 @@ class InfiniteCanvas(QGraphicsView):
             return
 
         key = event.key()
-
-        # Modo de seleção de exportação
-        if getattr(self.main_window, 'export_selection_mode', False):
-            if key in (Qt.Key_Return, Qt.Key_Enter):
-                if hasattr(self.main_window, 'finish_export_selection'):
-                    self.main_window.finish_export_selection()
-                event.accept()
-                return
-            if key == Qt.Key_Escape:
-                if hasattr(self.main_window, 'cancel_export_selection'):
-                    self.main_window.cancel_export_selection()
-                event.accept()
-                return
 
         if key not in (Qt.Key_Left, Qt.Key_Right, Qt.Key_Up, Qt.Key_Down):
             super().keyPressEvent(event)
@@ -712,10 +697,6 @@ class InfiniteCanvas(QGraphicsView):
         
         # BOTÃO DIREITO: Seleção retangular
         if event.button() == Qt.RightButton:
-            # No modo de exportação, o clique direito não altera a seleção
-            if getattr(self.main_window, 'export_selection_mode', False):
-                event.accept()
-                return
             # Inicia seleção retangular com o botão direito
             self.setDragMode(QGraphicsView.RubberBandDrag)
             super().mousePressEvent(event)
@@ -736,28 +717,18 @@ class InfiniteCanvas(QGraphicsView):
                 if parent_node:
                     item_clicked = parent_node
                 
-                export_mode = bool(getattr(self.main_window, 'export_selection_mode', False))
-                
                 # Se Ctrl está pressionado, alternar seleção (adicionar/remover)
                 if event.modifiers() & Qt.ControlModifier:
                     if item_clicked.isSelected():
                         item_clicked.setSelected(False)
                     else:
                         item_clicked.setSelected(True)
-                elif export_mode:
-                    # Modo de exportação: clicar ADICIONA à seleção (não limpa)
-                    item_clicked.setSelected(True)
                 else:
                     # Se não está selecionado, deseleciona outros
                     if not item_clicked.isSelected():
                         self.scene().clearSelection()
                         item_clicked.setSelected(True)
-                
-                # No modo de exportação, apenas seleciona (não arrasta objetos)
-                if export_mode:
-                    event.accept()
-                    return
-                
+
                 # Registra a posição original para TODOS os itens selecionados
                 self._item_positions.clear()
                 for item in self.scene().selectedItems():
@@ -777,12 +748,7 @@ class InfiniteCanvas(QGraphicsView):
                 self._last_pos = event.position().toPoint()
                 self.setCursor(Qt.ClosedHandCursor)
                 return
-            
-            # No modo de exportação, clicar no vazio NÃO deseleciona
-            if getattr(self.main_window, 'export_selection_mode', False):
-                event.accept()
-                return
-            
+
             # Se há seleção mas clicou no vazio, deseleciona
             self.scene().clearSelection()
             event.accept()
@@ -969,6 +935,304 @@ class InfiniteCanvas(QGraphicsView):
         self.setCursor(Qt.ArrowCursor)
 
 
+class ExportPreviewCanvas(InfiniteCanvas):
+    """Tela do diálogo "Prévia do desmembramento".
+
+    Reproduz a área de trabalho do app sobre a MESMA cena da janela
+    principal, mantendo as funções de movimentação e zoom da tela
+    principal (arrastar o vazio para deslocar, roda do mouse para zoom,
+    setas para deslocar) sem nunca alterar o mapa:
+
+    - modo prévia (editavel=False): somente leitura; clicar não muda
+      nada. O diálogo esconde os objetos que não serão exportados.
+    - modo Alterar (editavel=True): clicar num objeto alterna a seleção
+      (inclui/exclui da exportação) sem mexer nos demais. O objeto raiz
+      permanece sempre selecionado.
+    """
+
+    def __init__(self, scene, owner, parent=None):
+        super().__init__(scene, parent)
+        self.main_window = owner
+        self.owner = owner
+        self.editavel = False
+        self.setDragMode(QGraphicsView.NoDrag)
+        self.setMouseTracking(True)
+
+    # --------------------------------------------------
+    # MOVIMENTAÇÃO (idêntica à tela principal)
+    # --------------------------------------------------
+    def _iniciar_pan(self, pos_view):
+        """Desloca a tela arrastando o mouse sobre o vazio."""
+        self._panning = True
+        self._last_pos = pos_view
+        self.setCursor(Qt.ClosedHandCursor)
+
+    def _deslocar_tela(self, delta):
+        h_scroll = self.horizontalScrollBar()
+        v_scroll = self.verticalScrollBar()
+        h_scroll.setValue(h_scroll.value() - int(delta.x()))
+        v_scroll.setValue(v_scroll.value() - int(delta.y()))
+        self._extend_scroll_range_if_needed()
+
+    def _resolver_objeto_exportavel(self, item):
+        """Devolve o objeto (nó/mídia) correspondente ao item clicado.
+
+        Handles e caixas de texto pertencem ao nó pai; os demais itens
+        (conexões, grupos, molduras) não são exportáveis.
+        """
+        if isinstance(item, Handle):
+            return item.parent_node
+        while item is not None and not isinstance(item, (StyledNode, MediaItem)):
+            item = item.parentItem()
+        return item
+
+    def _alternar_selecao(self, item):
+        """Inclui/exclui o objeto da exportação (clique em Alterar)."""
+        if not self.editavel:
+            return
+        if item is self.owner.root:
+            # O objeto raiz vira o título do novo mapa: fica sempre
+            # selecionado, não pode ser removido pelo usuário.
+            return
+        item.setSelected(not item.isSelected())
+        self.owner.atualiza_contagem()
+
+    def mousePressEvent(self, event):
+        """Clique esquerdo alterna a seleção; clique no vazio desloca."""
+        if event.button() == Qt.MiddleButton:
+            event.accept()
+            return
+
+        if event.button() != Qt.LeftButton:
+            # Botão direito não faz seleção retangular na prévia.
+            event.accept()
+            return
+
+        item = self._resolver_objeto_exportavel(
+            self.itemAt(event.position().toPoint())
+        )
+        if item is not None:
+            self._alternar_selecao(item)
+            event.accept()
+            return
+
+        self._iniciar_pan(event.position().toPoint())
+        event.accept()
+
+    def mouseMoveEvent(self, event):
+        if self._panning:
+            pos_atual = event.position().toPoint()
+            delta = pos_atual - self._last_pos
+            # Mesma suavização da tela principal
+            suavizar = 1.0 + min((delta.x() ** 2 + delta.y() ** 2) ** 0.5 * 0.02, 1.5)
+            self._last_pos = pos_atual
+            self._deslocar_tela(delta * suavizar)
+            return
+        super().mouseMoveEvent(event)
+
+    def mouseReleaseEvent(self, event):
+        if self._panning and event.button() == Qt.LeftButton:
+            self._panning = False
+        self.setCursor(Qt.ArrowCursor)
+        super().mouseReleaseEvent(event)
+
+    def keyPressEvent(self, event):
+        """Setas deslocam a tela (nunca movem objetos); Enter/Esc = OK/Cancelar."""
+        key = event.key()
+        if key in (Qt.Key_Left, Qt.Key_Right, Qt.Key_Up, Qt.Key_Down):
+            passo = 10
+            delta = {Qt.Key_Left: QPointF(-passo, 0),
+                     Qt.Key_Right: QPointF(passo, 0),
+                     Qt.Key_Up: QPointF(0, -passo),
+                     Qt.Key_Down: QPointF(0, passo)}[key]
+            self._deslocar_tela(-delta)
+            event.accept()
+            return
+        if key in (Qt.Key_Return, Qt.Key_Enter):
+            self.owner.accept()
+            event.accept()
+            return
+        if key == Qt.Key_Escape:
+            self.owner.reject()
+            event.accept()
+            return
+        super().keyPressEvent(event)
+
+    def wheelEvent(self, event):
+        self.setTransformationAnchor(QGraphicsView.NoAnchor)
+        super().wheelEvent(event)
+        self.setTransformationAnchor(QGraphicsView.AnchorUnderMouse)
+
+
+class ExportPreviewDialog(QDialog):
+    """Diálogo "Prévia do desmembramento".
+
+    Não usa lista de objetos: mostra a área de trabalho do app (a mesma
+    cena da janela principal) com os objetos que serão exportados
+    destacados pela seleção.
+
+    Botões:
+    - OK: exporta a seleção atual.
+    - Alterar: passa o canvas para o modo de edição, exibindo o mapa
+      mental inteiro para incluir/remover objetos clicando neles.
+    - Cancelar: fecha sem exportar.
+    """
+
+    def __init__(self, window, root, planned, parent=None):
+        super().__init__(parent or window)
+        self.window = window
+        self.scene_ = window.scene
+        self.root = root
+        self.planned = list(planned)
+        self.editavel = False
+        self._visibilidade_anterior = {}
+        self._selecao_anterior = list(self.scene_.selectedItems())
+
+        self.setWindowTitle("Prévia do desmembramento")
+        self.setModal(True)
+        self.resize(max(720, int(window.width() * 0.7)),
+                    max(520, int(window.height() * 0.7)))
+        self.setMinimumSize(560, 420)
+
+        layout = QVBoxLayout(self)
+        self.rotulo = QLabel()
+        self.rotulo.setWordWrap(True)
+        layout.addWidget(self.rotulo)
+
+        self.canvas = ExportPreviewCanvas(self.scene_, self, self)
+        layout.addWidget(self.canvas, 1)
+
+        botoes = QHBoxLayout()
+        self.btn_alterar = QPushButton("Alterar")
+        self.btn_ok = QPushButton("OK")
+        self.btn_cancelar = QPushButton("Cancelar")
+        botoes.addWidget(self.btn_alterar)
+        botoes.addStretch(1)
+        botoes.addWidget(self.btn_cancelar)
+        botoes.addWidget(self.btn_ok)
+        layout.addLayout(botoes)
+
+        self.btn_ok.setDefault(True)
+        self.btn_ok.clicked.connect(self.accept)
+        self.btn_cancelar.clicked.connect(self.reject)
+        self.btn_alterar.clicked.connect(self.entrar_modo_edicao)
+
+        # Prévia: destaca (seleciona) o que será exportado e mostra apenas
+        # esses objetos no canvas.
+        self.scene_.clearSelection()
+        for item in self.planned:
+            item.setSelected(True)
+        self._aplicar_visibilidade(self.planned)
+        self._enquadrar(self.planned)
+        self.atualiza_contagem()
+
+    # --------------------------------------------------
+    # VISIBILIDADE / ENQUADRAMENTO
+    # --------------------------------------------------
+    def _aplicar_visibilidade(self, visiveis):
+        """Exibe apenas `visiveis` (lista None = todos), guardando estado."""
+        alvo = None if visiveis is None else set(visiveis)
+        for item in self.scene_.items():
+            if not isinstance(item, (StyledNode, MediaItem, GroupNode, SmartConnection)):
+                continue
+            if item not in self._visibilidade_anterior:
+                self._visibilidade_anterior[item] = item.isVisible()
+            item.setVisible(self._visibilidade_anterior[item] if alvo is None
+                            else item in alvo)
+
+    def _restaurar_visibilidade(self):
+        """Devolve aos objetos a visibilidade que tinham antes do diálogo."""
+        for item, visivel in self._visibilidade_anterior.items():
+            item.setVisible(visivel)
+        self._visibilidade_anterior.clear()
+
+    def _enquadrar(self, itens, margem=60):
+        """Centraliza a prévia nos objetos indicados."""
+        itens = [i for i in itens if i.scene() is self.scene_ and i.isVisible()]
+        if not itens:
+            self.canvas.resetTransform()
+            return
+        rect = QRectF(itens[0].sceneBoundingRect())
+        for item in itens[1:]:
+            rect = rect.united(item.sceneBoundingRect())
+        rect.adjust(-margem, -margem, margem, margem)
+        self.canvas.fitInView(rect, Qt.KeepAspectRatio)
+        self.canvas.centerOn(rect.center())
+
+    def _espelhar_tela_principal(self):
+        """Replica o deslocamento/zoom atual da janela principal."""
+        tela = self.window.view
+        self.canvas.setTransform(tela.transform())
+        visiveis = [i for i in self.scene_.items()
+                    if isinstance(i, (StyledNode, MediaItem)) and i.isSelected()]
+        if not self._cabe_na_tela(visiveis):
+            self._enquadrar(visiveis)
+
+    def _cabe_na_tela(self, itens):
+        if not itens:
+            return True
+        visivel = self.canvas.mapToScene(
+            self.canvas.viewport().rect()).boundingRect()
+        return all(visivel.contains(i.sceneBoundingRect().center()) for i in itens)
+
+    # --------------------------------------------------
+    # ESTADOS
+    # --------------------------------------------------
+    def objetos_selecionados(self):
+        """Objetos (nós/mídias) atualmente marcados para exportação."""
+        return [i for i in self.scene_.items()
+                if isinstance(i, (StyledNode, MediaItem)) and i.isSelected()]
+
+    def atualiza_contagem(self):
+        total = len(self.objetos_selecionados())
+        if self.editavel:
+            texto = (
+                f"<b>{total}</b> objeto(s) selecionado(s). "
+                "Clique nos objetos para incluí-los ou removê-los da exportação; "
+                "os demais continuam como estão. "
+                "O objeto marcado como título permanece fixo. "
+                "As linhas de conexão são exportadas automaticamente. "
+                "Use OK para concluir ou Cancelar para voltar atrás."
+            )
+        else:
+            texto = (
+                "Este mapa mental será desmembrado em uma nova janela com "
+                f"<b>{total}</b> objeto(s). O título e os objetos destacados "
+                "formam o novo mapa e as conexões entre eles são levadas "
+                "automaticamente."
+            )
+        self.rotulo.setText(texto)
+        self.rotulo.setTextFormat(Qt.RichText)
+
+
+    def entrar_modo_edicao(self):
+        """Botão Alterar: mostra o mapa inteiro e permite clicar nos objetos."""
+        if self.editavel:
+            return
+        self.editavel = True
+        self.canvas.editavel = True
+        self._aplicar_visibilidade(None)  # mapa mental inteiro
+        self._espelhar_tela_principal()
+        self.btn_alterar.setEnabled(False)
+        self.btn_alterar.setText("Alterando...")
+        self.atualiza_contagem()
+        self.canvas.setFocus()
+
+    def showEvent(self, event):
+        super().showEvent(event)
+        self.canvas.setFocus()
+
+    def done(self, result):
+        """Garante a restauração do mapa antes de fechar."""
+        self._restaurar_visibilidade()
+        if result != QDialog.DialogCode.Accepted:
+            self.scene_.clearSelection()
+            for item in self._selecao_anterior:
+                if item.scene() is self.scene_:
+                    item.setSelected(True)
+        super().done(result)
+
+
 # ======================================================
 # JANELA PRINCIPAL
 # ======================================================
@@ -996,10 +1260,6 @@ class AmareloMainWindow(QMainWindow):
         # Hide mode - controlled by button
         self.hide_mode_active = False
         self.hide_mode_hidden_items = []
-        
-        # Modo de seleção de exportação (Desmembrar -> Alterar)
-        self.export_selection_mode = False
-        self._pending_export_root = None
         
         # Conectar sinais para detectar mudanças
         self.undo_stack.indexChanged.connect(self._on_undo_stack_changed)
@@ -2258,16 +2518,17 @@ class AmareloMainWindow(QMainWindow):
         conexão). Se existirem, o desmembramento é bloqueado e o usuário
         pode localizá-los na tela (com zoom) até conectar/remover todos.
 
-        Em seguida, exibe uma prévia de como o mapa mental será exportado,
-        com os botões OK (exporta imediatamente) e Alterar (permite ao
-        usuário incluir manualmente mais objetos antes de exportar).
+        Em seguida, exibe a prévia do desmembramento: o canvas do diálogo
+        reproduz a área de trabalho com os objetos que serão exportados.
+        OK exporta; Alterar abre o mapa inteiro no canvas para o usuário
+        incluir/remover objetos clicando neles.
         """
         loose = self._get_loose_nodes()
         if loose:
             self._prompt_loose_nodes(loose)
             return
 
-        descendants, conns_both, conns_boundary = self._get_posterior_subgraph(obj)
+        descendants = self._get_posterior_subgraph(obj)[0]
         
         if not descendants:
             QMessageBox.information(
@@ -2277,61 +2538,74 @@ class AmareloMainWindow(QMainWindow):
             return
         
         planned = [obj] + sorted(descendants, key=id)
-        self._show_export_preview(obj, planned, conns_both, conns_boundary)
+        self._show_export_preview(obj, planned)
 
-    def _show_export_preview(self, root, planned, conns_both, conns_boundary):
+    def _show_export_preview(self, root, planned):
         """Exibe a prévia de como o mapa mental será exportado.
 
-        Oferece dois botões:
-        - OK: exporta imediatamente, tal como antes.
-        - Alterar: retorna ao mapa, seleciona os objetos previstos e deixa
-          o usuário adicionar mais objetos com um clique; Enter conclui.
-        """
-        dlg = QDialog(self)
-        dlg.setWindowTitle("Prévia do desmembramento")
-        dlg.setMinimumWidth(440)
-        layout = QVBoxLayout(dlg)
-        layout.addWidget(QLabel(
-            f"Este mapa mental será desmembrado em uma nova janela "
-            f"com {len(planned)} objeto(s):"
-        ))
-        list_widget = QListWidget()
-        for item in planned:
-            list_widget.addItem(self._export_preview_label(item))
-        list_widget.setSelectionMode(QListWidget.SelectionMode.NoSelection)
-        layout.addWidget(list_widget)
-        buttons = QHBoxLayout()
-        btn_alt = QPushButton("Alterar")
-        btn_ok = QPushButton("OK")
-        buttons.addWidget(btn_alt)
-        buttons.addWidget(btn_ok)
-        layout.addLayout(buttons)
-        btn_ok.setDefault(True)
-        btn_ok.clicked.connect(dlg.accept)
-        btn_alt.clicked.connect(dlg.reject)
-        if dlg.exec() == QDialog.DialogCode.Accepted:
-            self._perform_split(root, planned, conns_both, conns_boundary)
-        else:
-            self._enter_export_selection_mode(root, planned)
+        O diálogo reproduz a área de trabalho do app (mesma cena), com os
+        objetos previstos para a exportação destacados — sem lista de
+        objetos. No canvas valem as mesmas funções de movimentação e zoom
+        da tela principal.
 
-    def _export_preview_label(self, item):
-        """Gera um rótulo textual do objeto para a prévia de exportação."""
-        if isinstance(item, StyledNode):
-            text = (item.get_text() or "").strip().replace("\n", " ")
-            return text if text else "(sem texto)"
-        source = getattr(item, "source", None)
-        if source:
-            return os.path.basename(str(source))
-        entries = getattr(item, "_entries", None)
-        if entries:
-            parts = []
-            for e in entries[:3]:
-                t = e.get("text") if isinstance(e, dict) else None
-                if t:
-                    parts.append(str(t))
-            if parts:
-                return " | ".join(parts)
-        return type(item).__name__
+        Botões:
+        - OK: exporta a seleção atual, tal como antes.
+        - Alterar: o canvas passa a mostrar o mapa mental inteiro e o
+          usuário inclui/remove objetos clicando neles, sem alterar os
+          demais, até clicar em OK.
+        """
+        dlg = ExportPreviewDialog(self, root, planned, parent=self)
+        if dlg.exec() != QDialog.DialogCode.Accepted:
+            self.statusBar().showMessage("Desmembramento cancelado.", 5000)
+            return
+
+        nodes, c_both, c_boundary = self._export_set_from_selection(root)
+        if not nodes:
+            self.statusBar().showMessage(
+                "Nenhum objeto selecionado. Desmembramento cancelado.", 5000
+            )
+            return
+        self._perform_split(nodes[0], nodes, c_both, c_boundary)
+        self.statusBar().showMessage(
+            "Mapa mental exportado e removido do mapa atual.", 5000
+        )
+
+    def _export_set_from_selection(self, root):
+        """Monta o conjunto de exportação a partir da seleção atual.
+
+        O objeto raiz (título do novo mapa) é mantido sempre; os demais
+        objetos saem na ordem em que aparecem na cena. As linhas de
+        conexão são resolvidas automaticamente: as que ligam dois
+        objetos exportados vão junto (conns_both) e as que tocam apenas
+        um objeto exportado são removidas do mapa de origem
+        (conns_boundary).
+        """
+        if root is not None and root.scene() is self.scene:
+            root.setSelected(True)
+        sel = [i for i in self.scene.selectedItems()
+               if isinstance(i, (StyledNode, MediaItem))]
+        if not sel:
+            return [], [], []
+
+        if root is not None and root in sel:
+            nodes = [root] + sorted((i for i in sel if i is not root), key=id)
+        else:
+            nodes = sorted(sel, key=id)
+            root = nodes[0]
+
+        export_set = set(nodes)
+        conns_both = []
+        conns_boundary = []
+        for item in self.scene.items():
+            if not isinstance(item, SmartConnection):
+                continue
+            in_src = item.source in export_set
+            in_tgt = item.target in export_set
+            if in_src and in_tgt:
+                conns_both.append(item)
+            elif in_src or in_tgt:
+                conns_boundary.append(item)
+        return nodes, conns_both, conns_boundary
 
     def _perform_split(self, root, nodes, conns_both, conns_boundary):
         """Cria a nova janela e transfere o subgrafo via comando undoável."""
@@ -2356,72 +2630,6 @@ class AmareloMainWindow(QMainWindow):
         # Alteração estrutural recente: garante persistência imediata
         if self.autosave_enabled and self.current_file:
             self._autosave()
-
-    def _enter_export_selection_mode(self, root, planned):
-        """Ativa o modo de seleção para exportação (botão Alterar).
-
-        Todos os objetos previstos são selecionados (handles visíveis). O
-        usuário pode adicionar mais objetos clicando neles com o botão
-        esquerdo do mouse; Enter exporta e Esc cancela.
-        """
-        self.export_selection_mode = True
-        self._pending_export_root = root
-        self.scene.clearSelection()
-        for item in planned:
-            item.setSelected(True)
-        self.statusBar().showMessage(
-            "Exportação: clique nos objetos para incluir na seleção "
-            "e pressione Enter para concluir (Esc cancela).",
-            8000
-        )
-        self.view.setFocus()
-
-    def finish_export_selection(self):
-        """Exporta (desmembra) o mapa com base na seleção atual.
-
-        Chamado quando o usuário pressiona Enter no modo de seleção de
-        exportação. Os objetos selecionados são transferidos para uma nova
-        janela e removidos do mapa atual.
-        """
-        root = self._pending_export_root
-        self.export_selection_mode = False
-        self._pending_export_root = None
-
-        sel = [i for i in self.scene.selectedItems() if isinstance(i, (StyledNode, MediaItem))]
-        if not sel:
-            self.statusBar().showMessage("Nenhum objeto selecionado. Desmembramento cancelado.", 5000)
-            return
-
-        if root in sel:
-            nodes = [root] + sorted((i for i in sel if i is not root), key=id)
-        else:
-            nodes = sorted(sel, key=id)
-            if root is None:
-                root = nodes[0]
-
-        export_set = set(nodes)
-        conns_both = []
-        conns_boundary = []
-        for item in self.scene.items():
-            if not isinstance(item, SmartConnection):
-                continue
-            in_src = item.source in export_set
-            in_tgt = item.target in export_set
-            if in_src and in_tgt:
-                conns_both.append(item)
-            elif in_src or in_tgt:
-                conns_boundary.append(item)
-
-        self.scene.clearSelection()
-        self._perform_split(root, nodes, conns_both, conns_boundary)
-        self.statusBar().showMessage("Mapa mental exportado e removido do mapa atual.", 5000)
-
-    def cancel_export_selection(self):
-        """Cancela o modo de seleção de exportação (tecla Esc)."""
-        self.export_selection_mode = False
-        self._pending_export_root = None
-        self.scene.clearSelection()
-        self.statusBar().showMessage("Desmembramento cancelado.", 5000)
 
     def _connect_to_other_mindmap(self, obj):
         """Conecta o objeto selecionado ao título de outro arquivo de mapa mental."""
