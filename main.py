@@ -13,7 +13,7 @@ from PySide6.QtGui import (
     QPainter, QColor, QAction, QWheelEvent,
     QUndoStack, QImage, QUndoCommand, QFont,
     QTextCursor, QTextCharFormat, QPen, QPixmap,
-    QTextOption
+    QTextOption, QKeySequence
 )
 
 # ======================================================
@@ -1041,6 +1041,11 @@ class AmareloMainWindow(QMainWindow):
             "Alinhar": "D",
             "Temas": "",
             "Localizar": "Ctrl+F",
+            # Botões da caixa de diálogo "Conectar ou desconectar" (tecla C).
+            # Só ficam ativos enquanto o diálogo modal está aberto.
+            "Conectar ou desconectar objetos": "",
+            "Desmembrar mapa mental": "",
+            "Conectar a outro mapa mental": "",
         }
         
         self.load_shortcuts_from_file()
@@ -2052,10 +2057,11 @@ class AmareloMainWindow(QMainWindow):
                 self.undo_stack.push(RemoveItemCommand(self.scene, item, "Remover objeto"))
 
     def connect_nodes(self):
-        """Conecta ou desconecta objetos selecionados.
+        """Ponto de entrada da ação "Conectar ou desconectar" (tecla C).
 
         Com exatamente 1 objeto selecionado, abre um diálogo com as opções:
-        Desmembrar mapa mental, Conectar a outro mapa mental e Cancelar.
+        Conectar ou desconectar objetos, Desmembrar mapa mental, Conectar a
+        outro mapa mental e Cancelar.
         Com 2+ objetos, conecta/desconecta os selecionados entre si.
         """
         sel = [i for i in self.scene.selectedItems() if isinstance(i, (StyledNode, MediaItem))]
@@ -2063,6 +2069,20 @@ class AmareloMainWindow(QMainWindow):
         if len(sel) == 1:
             self._show_connect_dialog(sel[0])
             return
+        
+        if len(sel) < 2:
+            return
+        
+        self.connect_selected_objects()
+
+    def connect_selected_objects(self):
+        """Conecta (ou desconecta) os objetos selecionados com linhas.
+
+        Percorre os objetos selecionados em sequência: cada par vizinho é
+        ligado por uma SmartConnection. Se a conexão já existir entre o par,
+        ela é removida, DESFAZENDO a ligação. Menos de 2 objetos não faz nada.
+        """
+        sel = [i for i in self.scene.selectedItems() if isinstance(i, (StyledNode, MediaItem))]
         
         if len(sel) < 2:
             return
@@ -2097,20 +2117,45 @@ class AmareloMainWindow(QMainWindow):
     # --------------------------------------------------
     # DIÁLOGO CONECTAR (1 OBJETO SELECIONADO)
     # --------------------------------------------------
+    def _apply_connect_dialog_shortcut(self, button, shortcut_name):
+        """Associa a tecla de atalho configurada a um botão do diálogo.
+
+        O atalho só vale enquanto o QMessageBox modal está aberto: a barra de
+        ferramentas fica bloqueada atrás dele, então a tecla executa a ação
+        do diálogo imediatamente, sem ambigüedad com a barra.
+        """
+        seq = (self.custom_shortcuts.get(shortcut_name) or "").strip()
+        if not seq:
+            return
+        key_seq = QKeySequence(seq)
+        if key_seq.isEmpty():
+            return
+        button.setShortcut(key_seq)
+
     def _show_connect_dialog(self, obj):
-        """Exibe o diálogo de conectividade para um único objeto selecionado."""
+        """Exibe o diálogo de conectividade para um único objeto selecionado.
+
+        Ordem dos botões: Conectar ou desconectar objetos, Desmembrar mapa
+        mental, Conectar a outro mapa mental e Cancelar (sempre por último, na
+        extrema direita). Cada botão pode receber uma tecla de atalho na tela
+        de Teclas de Atalho; com o diálogo aberto, a tecla aciona a ação na
+        hora.
+        """
         msg = QMessageBox(self)
         msg.setWindowTitle("Conectar ou desconectar")
         msg.setIcon(QMessageBox.Icon.Question)
         msg.setText("O que você deseja fazer?")
-        btn_add = msg.addButton("Adicionar objeto", QMessageBox.ButtonRole.ActionRole)
+        btn_connect = msg.addButton("Conectar ou desconectar objetos", QMessageBox.ButtonRole.ActionRole)
         btn_split = msg.addButton("Desmembrar mapa mental", QMessageBox.ButtonRole.AcceptRole)
         btn_merge = msg.addButton("Conectar a outro mapa mental", QMessageBox.ButtonRole.AcceptRole)
         btn_cancel = msg.addButton("Cancelar", QMessageBox.ButtonRole.RejectRole)
+        self._apply_connect_dialog_shortcut(btn_connect, "Conectar ou desconectar objetos")
+        self._apply_connect_dialog_shortcut(btn_split, "Desmembrar mapa mental")
+        self._apply_connect_dialog_shortcut(btn_merge, "Conectar a outro mapa mental")
         msg.exec()
         clicked = msg.clickedButton()
-        if clicked == btn_add:
-            self.add_object()
+        if clicked == btn_connect:
+            self.connect_selected_objects()
         elif clicked == btn_split:
             self._split_mindmap(obj)
         elif clicked == btn_merge:
@@ -3007,7 +3052,10 @@ class AmareloMainWindow(QMainWindow):
             "Adicionar", "Título", "Mídia", "Conectar", "Ocultar", "Excluir",
             "Fonte", "Cores",
             "Alinhar", "Temas",
-            "Localizar"
+            "Localizar",
+            # Botões da caixa de diálogo aberta pela tecla "Conectar"
+            "Conectar ou desconectar objetos", "Desmembrar mapa mental",
+            "Conectar a outro mapa mental"
         ]
         
         dialog = QDialog(self)
@@ -3306,7 +3354,7 @@ class AmareloMainWindow(QMainWindow):
         about_text = """
 <h2>Amarelo Mind</h2>
 
-<p><b>Versão 1.6.6</b></p>
+<p><b>Versão 1.6.7</b></p>
 
 <p>Um aplicativo de mapa mental moderno e intuitivo.</p>
 
