@@ -957,6 +957,13 @@ class ExportPreviewCanvas(InfiniteCanvas):
         self.editavel = False
         self.setDragMode(QGraphicsView.NoDrag)
         self.setMouseTracking(True)
+        # Copiar background da tela principal para manter consistência visual
+        if owner and hasattr(owner, 'view'):
+            self.setBackgroundBrush(owner.view.backgroundBrush())
+        elif owner and hasattr(owner, 'current_theme_name'):
+            theme = THEMES.get(owner.current_theme_name, THEMES.get("Verde"))
+            if theme:
+                self.setBackgroundBrush(QColor(theme.get("canvas_bg", "#0f1621")))
 
     # --------------------------------------------------
     # MOVIMENTAÇÃO (idêntica à tela principal)
@@ -1078,12 +1085,13 @@ class ExportPreviewDialog(QDialog):
     - Cancelar: fecha sem exportar.
     """
 
-    def __init__(self, window, root, planned, parent=None):
+    def __init__(self, window, root, planned, conns_both=None, parent=None):
         super().__init__(parent or window)
         self.window = window
         self.scene_ = window.scene
         self.root = root
         self.planned = list(planned)
+        self.conns_both = list(conns_both) if conns_both is not None else []
         self.editavel = False
         self._visibilidade_anterior = {}
         self._selecao_anterior = list(self.scene_.selectedItems())
@@ -1122,7 +1130,7 @@ class ExportPreviewDialog(QDialog):
         self.scene_.clearSelection()
         for item in self.planned:
             item.setSelected(True)
-        self._aplicar_visibilidade(self.planned)
+        self._aplicar_visibilidade(self.planned + self.conns_both)
         self._enquadrar(self.planned)
         self.atualiza_contagem()
 
@@ -2528,7 +2536,7 @@ class AmareloMainWindow(QMainWindow):
             self._prompt_loose_nodes(loose)
             return
 
-        descendants = self._get_posterior_subgraph(obj)[0]
+        descendants, conns_both, conns_boundary = self._get_posterior_subgraph(obj)
         
         if not descendants:
             QMessageBox.information(
@@ -2538,9 +2546,9 @@ class AmareloMainWindow(QMainWindow):
             return
         
         planned = [obj] + sorted(descendants, key=id)
-        self._show_export_preview(obj, planned)
+        self._show_export_preview(obj, planned, conns_both=conns_both)
 
-    def _show_export_preview(self, root, planned):
+    def _show_export_preview(self, root, planned, conns_both=None):
         """Exibe a prévia de como o mapa mental será exportado.
 
         O diálogo reproduz a área de trabalho do app (mesma cena), com os
@@ -2554,7 +2562,7 @@ class AmareloMainWindow(QMainWindow):
           usuário inclui/remove objetos clicando neles, sem alterar os
           demais, até clicar em OK.
         """
-        dlg = ExportPreviewDialog(self, root, planned, parent=self)
+        dlg = ExportPreviewDialog(self, root, planned, conns_both=conns_both, parent=self)
         if dlg.exec() != QDialog.DialogCode.Accepted:
             self.statusBar().showMessage("Desmembramento cancelado.", 5000)
             return
@@ -3562,7 +3570,7 @@ class AmareloMainWindow(QMainWindow):
         about_text = """
 <h2>Amarelo Mind</h2>
 
-<p><b>Versão 1.6.8</b></p>
+<p><b>Versão 1.6.9</b></p>
 
 <p>Um aplicativo de mapa mental moderno e intuitivo.</p>
 
