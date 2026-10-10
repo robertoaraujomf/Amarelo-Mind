@@ -491,6 +491,11 @@ class StyledNode(QGraphicsRectItem):
         font.setBold(True)
         self.text.setFont(font)
 
+        # Centralizar o texto (horizontal e verticalmente) no círculo
+        text_option = QTextOption()
+        text_option.setAlignment(Qt.AlignCenter)
+        self.text.document().setDefaultTextOption(text_option)
+
         # Encontrar o menor círculo que cabe o texto
         orig = self._original_rect
         size = max(orig.width(), orig.height(), 80)
@@ -534,6 +539,11 @@ class StyledNode(QGraphicsRectItem):
             font.setPointSize(self._original_font_size)
             font.setBold(False)
             self.text.setFont(font)
+
+        # Restaurar alinhamento justificado padrão dos nós comuns
+        text_option = QTextOption()
+        text_option.setAlignment(Qt.AlignJustify)
+        self.text.document().setDefaultTextOption(text_option)
 
         self.text.setTextWidth(max(20, self._original_rect.width() - 20))
         self._center_text_vertical()

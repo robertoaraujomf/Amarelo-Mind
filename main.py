@@ -3078,7 +3078,7 @@ class AmareloMainWindow(QMainWindow):
         w, h = max(1, int(rect.width())), max(1, int(rect.height()))
 
         image = QImage(w, h, QImage.Format_ARGB32)
-        image.fill(QColor("#0f1621"))
+        image.fill(Qt.transparent)
 
         painter = QPainter(image)
         painter.setRenderHint(QPainter.Antialiasing)
