@@ -1107,7 +1107,7 @@ class ExportPreviewDialog(QDialog):
         self.rotulo.setWordWrap(True)
         layout.addWidget(self.rotulo)
 
-        self.canvas = ExportPreviewCanvas(self.scene_, self, self)
+        self.canvas = ExportPreviewCanvas(self.scene_, self.window, self)
         layout.addWidget(self.canvas, 1)
 
         botoes = QHBoxLayout()
@@ -3570,7 +3570,7 @@ class AmareloMainWindow(QMainWindow):
         about_text = """
 <h2>Amarelo Mind</h2>
 
-<p><b>Versão 1.6.9</b></p>
+<p><b>Versão 1.6.10</b></p>
 
 <p>Um aplicativo de mapa mental moderno e intuitivo.</p>
 
