@@ -3315,7 +3315,7 @@ class AmareloMainWindow(QMainWindow):
         table.resizeRowsToContents()
         layout.addWidget(table)
         
-        info_label = QLabel("Dica: Pressione Escape para limpar. Selecione a linha e digite as teclas.")
+        info_label = QLabel("Dica: Pressione Escape ou use o botão 'Limpar' para limpar. Selecione a linha e digite as teclas.")
         info_label.setStyleSheet("color: gray; font-style: italic;")
         layout.addWidget(info_label)
         
@@ -3377,6 +3377,14 @@ class AmareloMainWindow(QMainWindow):
                         key_name = "Up"
                     elif key == Qt.Key_Down:
                         key_name = "Down"
+                    elif Qt.Key_A <= key <= Qt.Key_Z:
+                        # Letras diretas (ex.: Ctrl+U -> 'U'). Importante porque
+                        # com Ctrl o event.text() vem como caractere de controle
+                        # (ex.: '\x15' para Ctrl+U), nao como letra "impressivel".
+                        key_name = chr(key).upper()
+                    elif 0x30 <= key <= 0x39:
+                        # Digitos (ex.: Ctrl+2)
+                        key_name = str(key - 0x30)
                     else:
                         key_text = event.text()
                         if key_text and key_text.isprintable():
@@ -3472,12 +3480,23 @@ class AmareloMainWindow(QMainWindow):
             if hasattr(self, 'act_hide'):
                 self.act_hide.setShortcut(self.custom_shortcuts.get("Ocultar", ""))
         
+        def clear_selected_shortcut():
+            row = table.currentRow()
+            if row < 0:
+                return
+            name = all_buttons[row]
+            shortcut_edits[name].setText("")
+        
+        clear_btn = QPushButton("Limpar")
+        clear_btn.clicked.connect(clear_selected_shortcut)
+        
         save_btn = QPushButton("Salvar")
         save_btn.clicked.connect(apply_shortcuts)
         
         close_btn = QPushButton("Fechar")
         close_btn.clicked.connect(dialog.accept)
         
+        btn_layout.addWidget(clear_btn)
         btn_layout.addWidget(save_btn)
         btn_layout.addWidget(close_btn)
         layout.addLayout(btn_layout)
@@ -3570,7 +3589,7 @@ class AmareloMainWindow(QMainWindow):
         about_text = """
 <h2>Amarelo Mind</h2>
 
-<p><b>Versão 1.6.10</b></p>
+<p><b>Versão 1.6.11</b></p>
 
 <p>Um aplicativo de mapa mental moderno e intuitivo.</p>
 
