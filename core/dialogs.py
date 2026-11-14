@@ -29,9 +29,16 @@ class FontStyleDialog(QDialog):
         
         families = QFontDatabase.families()
         self.font_family_combo.addItems(families)
-        
-        if self.current_font.family() in families:
-            self.font_family_combo.setCurrentText(self.current_font.family())
+
+        # Inicializar a família com base no formato selecionado (se houver),
+        # para que a formatação da fonte reflita o texto selecionado pelo usuário
+        initial_family = self.current_font.family()
+        if self.current_format is not None:
+            cf = self.current_format.fontFamily()
+            if cf:
+                initial_family = cf
+        if initial_family in families:
+            self.font_family_combo.setCurrentText(initial_family)
         
         font_family_layout.addWidget(self.font_family_combo)
         font_family_group.setLayout(font_family_layout)
@@ -121,11 +128,10 @@ class FontStyleDialog(QDialog):
     
     def get_format(self):
         fmt = QTextCharFormat()
-        fmt.setFontFamily(self.font_family_combo.currentText())
-        fmt.setFontPointSize(self.size_spin.value())
-        fmt.setFontWeight(QFont.Weight.Bold if self.bold_btn.isChecked() else QFont.Weight.Normal)
-        fmt.setFontItalic(self.italic_btn.isChecked())
-        fmt.setFontUnderline(self.underline_btn.isChecked())
+        # Usar QFont completo garante que a formatação da fonte seja aplicada
+        # ao texto selecionado (família, tamanho, negrito, itálico, sublinhado)
+        font = self.get_font()
+        fmt.setFont(font)
         fmt.setFontStrikeOut(self.strikethrough_btn.isChecked())
         fmt.setFontOverline(self.overline_btn.isChecked())
         return fmt

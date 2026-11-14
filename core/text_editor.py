@@ -74,5 +74,12 @@ class TextEditorManager:
         current_font = text_item.font()
         ok, font = QFontDialog.getFont(current_font, parent, "Escolha a Fonte")
         if ok:
-            # Aplica a fonte escolhida ao item de texto
-            text_item.setFont(font)
+            cursor = text_item.textCursor()
+            if cursor.hasSelection():
+                fmt = QTextCharFormat()
+                fmt.setFont(font)
+                cursor.mergeCharFormat(fmt)
+                text_item.setTextCursor(cursor)
+            else:
+                # Aplica a fonte escolhida ao item de texto
+                text_item.setFont(font)

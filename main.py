@@ -2789,13 +2789,21 @@ class AmareloMainWindow(QMainWindow):
         # Verificar se há seleção de texto
         cursor = target_node.text.textCursor()
         has_text_selection = cursor.hasSelection()
-        
+
+        # Capturar o intervalo da seleção ANTES de abrir o diálogo
+        selection_start = cursor.selectionStart() if has_text_selection else 0
+        selection_end = cursor.selectionEnd() if has_text_selection else 0
+
         # Passar a fonte e o formato do cursor para o diálogo
         current_font = target_node.text.font()
+        if has_text_selection:
+            cf = cursor.charFormat()
+            if cf.font().family():
+                current_font = cf.font()
         cursor_format = None
         if has_text_selection:
             cursor_format = cursor.charFormat()
-        
+
         # Abrir diálogo customizado
         font, fmt, ok = FontStyleDialog.get_font_and_format(current_font, self, cursor_format)
         
@@ -2805,11 +2813,10 @@ class AmareloMainWindow(QMainWindow):
         old_html = target_node.text.document().toHtml()
         
         if has_text_selection:
-            selection_start = cursor.selectionStart()
-            selection_end = cursor.selectionEnd()
+            cursor = target_node.text.textCursor()
             cursor.setPosition(selection_start)
             cursor.setPosition(selection_end, QTextCursor.KeepAnchor)
-            
+
             cursor.mergeCharFormat(fmt)
             target_node.text.setTextCursor(cursor)
         else:
@@ -3589,7 +3596,7 @@ class AmareloMainWindow(QMainWindow):
         about_text = """
 <h2>Amarelo Mind</h2>
 
-<p><b>Versão 1.6.11</b></p>
+<p><b>Versão 1.6.12</b></p>
 
 <p>Um aplicativo de mapa mental moderno e intuitivo.</p>
 
