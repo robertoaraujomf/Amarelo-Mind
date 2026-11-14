@@ -34,9 +34,12 @@ class FontStyleDialog(QDialog):
         # para que a formatação da fonte reflita o texto selecionado pelo usuário
         initial_family = self.current_font.family()
         if self.current_format is not None:
-            cf = self.current_format.fontFamily()
-            if cf:
-                initial_family = cf
+            try:
+                cf = self.current_format.font()
+                if cf.family():
+                    initial_family = cf.family()
+            except Exception:
+                pass
         if initial_family in families:
             self.font_family_combo.setCurrentText(initial_family)
         
