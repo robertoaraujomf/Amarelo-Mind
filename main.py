@@ -611,6 +611,93 @@ class InfiniteCanvas(QGraphicsView):
             h_scroll.setRange(new_min_h, new_max_h)
             v_scroll.setRange(new_min_v, new_max_v)
 
+    def _auto_align_dropped(self, moved_items):
+        from items.shapes import StyledNode
+        from items.media import MediaItem
+
+        scene = self.scene()
+        items = [it for it in scene.items() if isinstance(it, (StyledNode, MediaItem))]
+        if len(items) < 2 or not moved_items:
+            return
+
+        moved_items = [m for m in moved_items if m in items]
+        if not moved_items:
+            return
+
+        vp = self.mapToScene(self.viewport().rect()).boundingRect()
+        AXIS_TOL = 40.0
+        MARGIN = 24.0
+
+        def center_of(it):
+            return it.sceneBoundingRect().center()
+
+        h_groups = []
+        h_seen = set()
+        for seed in moved_items:
+            sy = center_of(seed).y()
+            group = [it for it in items if abs(center_of(it).y() - sy) <= AXIS_TOL]
+            if len(group) < 2:
+                continue
+            key = frozenset(id(it) for it in group)
+            if key in h_seen:
+                continue
+            h_seen.add(key)
+            h_groups.append(group)
+
+        v_groups = []
+        v_seen = set()
+        for seed in moved_items:
+            sx = center_of(seed).x()
+            group = [it for it in items if abs(center_of(it).x() - sx) <= AXIS_TOL]
+            if len(group) < 2:
+                continue
+            key = frozenset(id(it) for it in group)
+            if key in v_seen:
+                continue
+            v_seen.add(key)
+            v_groups.append(group)
+
+        h_handled = set(id(it) for g in h_groups for it in g)
+
+        for group in h_groups:
+            ordered = sorted(group, key=lambda it: center_of(it).x())
+            total_w = sum(it.sceneBoundingRect().width() for it in ordered)
+            n = len(ordered)
+            available_w = max(1.0, vp.width() - 2 * MARGIN)
+            gap = (available_w - total_w) / (n - 1) if n > 1 else 0.0
+            if gap < 8.0:
+                gap = 8.0
+            current_x = vp.left() + MARGIN
+            mid_y = vp.center().y()
+            for it in ordered:
+                w = it.sceneBoundingRect().width()
+                h = it.sceneBoundingRect().height()
+                it.prepareGeometryChange()
+                it.setPos(current_x, mid_y - h / 2.0)
+                current_x += w + gap
+
+        for group in v_groups:
+            filtered = [it for it in group if id(it) not in h_handled]
+            if len(filtered) < 2:
+                continue
+            ordered = sorted(filtered, key=lambda it: center_of(it).y())
+            total_h = sum(it.sceneBoundingRect().height() for it in ordered)
+            n = len(ordered)
+            available_h = max(1.0, vp.height() - 2 * MARGIN)
+            gap = (available_h - total_h) / (n - 1) if n > 1 else 0.0
+            if gap < 8.0:
+                gap = 8.0
+            current_y = vp.top() + MARGIN
+            mid_x = vp.center().x()
+            for it in ordered:
+                w = it.sceneBoundingRect().width()
+                h = it.sceneBoundingRect().height()
+                it.prepareGeometryChange()
+                it.setPos(mid_x - w / 2.0, current_y)
+                current_y += h + gap
+
+        scene.update()
+
     def set_undo_stack(self, undo_stack):
         """Define o stack de Undo/Redo"""
         self.undo_stack = undo_stack
@@ -850,14 +937,35 @@ class InfiniteCanvas(QGraphicsView):
                 for item, original_pos in self._item_positions.items():
                     item.setPos(original_pos)
             else:
-                # Rastrear movimento para undo/redo
                 main_window = QApplication.activeWindow()
+                moved_items = [item for item, original_pos in self._item_positions.items()
+                               if item.isSelected() and item.pos() != original_pos]
+                # Posições antes do alinhamento automático (para undo de itens arrastados
+                # por alinhamento mas que não estavam na seleção inicial)
+                from items.shapes import StyledNode
+                from items.media import MediaItem
+                alignable_items = [it for it in self.scene().items()
+                                   if isinstance(it, (StyledNode, MediaItem))]
+                before_align = {it: it.pos() for it in alignable_items}
+
+                # Alinhamento automático com base na viewport visível
+                try:
+                    self._auto_align_dropped(moved_items)
+                except Exception:
+                    pass
+
                 if hasattr(main_window, 'undo_stack'):
+                    # Itens que foram arrastados pelo usuário
                     for item, original_pos in self._item_positions.items():
                         if item.isSelected() and item.pos() != original_pos:
                             cmd = MoveItemCommand(item, original_pos, item.pos(), "Mover objeto")
                             main_window.undo_stack.push(cmd)
-            
+                    # Itens movidos apenas pelo alinhamento automático
+                    for item, pos in before_align.items():
+                        if item not in self._item_positions and item.pos() != pos:
+                            cmd = MoveItemCommand(item, pos, item.pos(), "Alinhar automaticamente")
+                            main_window.undo_stack.push(cmd)
+
             # Resetar estado de drag
             self._dragging_item = None
             self._drag_start_pos = None
@@ -3596,7 +3704,7 @@ class AmareloMainWindow(QMainWindow):
         about_text = """
 <h2>Amarelo Mind</h2>
 
-<p><b>Versão 1.6.12</b></p>
+<p><b>Versão 1.6.13</b></p>
 
 <p>Um aplicativo de mapa mental moderno e intuitivo.</p>
 
